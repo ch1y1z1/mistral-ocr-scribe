@@ -1,6 +1,7 @@
 
+
 import { useState, useRef } from 'react';
-import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff } from 'lucide-react';
+import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff, Link } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,12 +9,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import FileUpload from '@/components/FileUpload';
+import UrlInput from '@/components/UrlInput';
 import ApiKeyManager from '@/components/ApiKeyManager';
 import OcrResults from '@/components/OcrResults';
 
 const Index = () => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('mistral-api-key') || '');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inputUrl, setInputUrl] = useState<string>('');
+  const [inputType, setInputType] = useState<'file' | 'url'>('file');
   const [ocrResult, setOcrResult] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -21,11 +25,26 @@ const Index = () => {
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     setOcrResult('');
+    setInputType('file');
     
     if (file) {
       toast({
         title: "文件选择成功",
         description: `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
+      });
+    }
+  };
+
+  const handleUrlInput = (url: string) => {
+    setInputUrl(url);
+    setSelectedFile(null);
+    setOcrResult('');
+    setInputType('url');
+    
+    if (url) {
+      toast({
+        title: "URL 输入成功",
+        description: `已输入: ${url}`
       });
     }
   };
@@ -72,10 +91,10 @@ const Index = () => {
   };
 
   const processOCR = async () => {
-    if (!selectedFile || !apiKey) {
+    if ((!selectedFile && !inputUrl) || !apiKey) {
       toast({
         title: "错误",
-        description: "请选择文件并输入API密钥",
+        description: "请选择文件或输入URL，并输入API密钥",
         variant: "destructive"
       });
       return;
@@ -85,56 +104,89 @@ const Index = () => {
     
     toast({
       title: "开始 OCR 处理",
-      description: "正在准备文件..."
+      description: inputType === 'file' ? "正在准备文件..." : "正在处理URL..."
     });
 
     try {
       let documentSource: any = null;
 
-      if (selectedFile.type === 'application/pdf') {
-        // PDF 文件处理
-        const documentUrl = await uploadPdfFile(selectedFile);
+      if (inputType === 'url' && inputUrl) {
+        // URL 处理
+        console.log('处理 URL:', inputUrl);
         
-        documentSource = {
-          type: "document_url",
-          document_url: documentUrl
-        };
+        // 检查是否是图片 URL
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+        const isImageUrl = imageExtensions.some(ext => 
+          inputUrl.toLowerCase().includes(ext) || 
+          inputUrl.toLowerCase().match(new RegExp(`\\${ext}(\\?|$)`))
+        );
         
-        console.log('PDF 文档源:', documentSource);
-      } else {
-        // 图片文件处理
-        const startConversion = Date.now();
-        toast({
-          title: "图片转换",
-          description: "正在将图片转换为 Base64 格式..."
-        });
-
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            resolve(result.split(',')[1]);
+        if (isImageUrl) {
+          documentSource = {
+            type: "image_url",
+            image_url: inputUrl
           };
-          reader.readAsDataURL(selectedFile);
-        });
+          console.log('识别为图片 URL:', documentSource);
+        } else {
+          // 假设是 PDF 或其他文档 URL
+          documentSource = {
+            type: "document_url",
+            document_url: inputUrl
+          };
+          console.log('识别为文档 URL:', documentSource);
+        }
+      } else if (inputType === 'file' && selectedFile) {
+        // 文件处理 - 保持原有逻辑
+        if (selectedFile.type === 'application/pdf') {
+          // PDF 文件处理
+          const documentUrl = await uploadPdfFile(selectedFile);
+          
+          documentSource = {
+            type: "document_url",
+            document_url: documentUrl
+          };
+          
+          console.log('PDF 文档源:', documentSource);
+        } else {
+          // 图片文件处理
+          const startConversion = Date.now();
+          toast({
+            title: "图片转换",
+            description: "正在将图片转换为 Base64 格式..."
+          });
 
-        const conversionTime = Date.now() - startConversion;
-        console.log(`图片转换耗时: ${conversionTime}ms`);
-        
-        toast({
-          title: "图片转换完成",
-          description: `Base64 转换耗时: ${conversionTime}ms`
-        });
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]);
+            };
+            reader.readAsDataURL(selectedFile);
+          });
 
-        documentSource = {
-          type: "image_url",
-          image_url: `data:${selectedFile.type};base64,${base64}`
-        };
+          const conversionTime = Date.now() - startConversion;
+          console.log(`图片转换耗时: ${conversionTime}ms`);
+          
+          toast({
+            title: "图片转换完成",
+            description: `Base64 转换耗时: ${conversionTime}ms`
+          });
+
+          documentSource = {
+            type: "image_url",
+            image_url: `data:${selectedFile.type};base64,${base64}`
+          };
+        }
       }
 
       console.log('准备发送 OCR API 请求...');
-      console.log('文件类型:', selectedFile.type);
-      console.log('文件大小:', selectedFile.size, 'bytes');
+      console.log('输入类型:', inputType);
+      if (inputType === 'file') {
+        console.log('文件类型:', selectedFile?.type);
+        console.log('文件大小:', selectedFile?.size, 'bytes');
+      } else {
+        console.log('URL:', inputUrl);
+      }
 
       const requestStart = Date.now();
       toast({
@@ -300,31 +352,75 @@ const Index = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Mistral OCR 文字识别</h1>
-          <p className="text-blue-200 text-lg">上传图片或PDF文件，智能提取文字内容</p>
+          <p className="text-blue-200 text-lg">上传图片/PDF文件或输入URL，智能提取文字内容</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-          {/* Left Column - API Key and File Upload */}
+          {/* Left Column - API Key and Input Options */}
           <div className="space-y-6">
             <ApiKeyManager apiKey={apiKey} setApiKey={setApiKey} />
-            <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
             
-            {selectedFile && (
+            {/* Input Type Selector */}
+            <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-xl">
+              <CardHeader>
+                <CardTitle className="text-gray-800">选择输入方式</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex space-x-4 mb-4">
+                  <Button
+                    variant={inputType === 'file' ? 'default' : 'outline'}
+                    onClick={() => setInputType('file')}
+                    className="flex-1"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    上传文件
+                  </Button>
+                  <Button
+                    variant={inputType === 'url' ? 'default' : 'outline'}
+                    onClick={() => setInputType('url')}
+                    className="flex-1"
+                  >
+                    <Link className="w-4 h-4 mr-2" />
+                    输入URL
+                  </Button>
+                </div>
+                
+                {inputType === 'file' ? (
+                  <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+                ) : (
+                  <UrlInput onUrlInput={handleUrlInput} inputUrl={inputUrl} />
+                )}
+              </CardContent>
+            </Card>
+            
+            {(selectedFile || inputUrl) && (
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
-                      {selectedFile.type.startsWith('image/') ? (
-                        <ImageIcon className="w-6 h-6 text-blue-600" />
+                      {inputType === 'file' ? (
+                        <>
+                          {selectedFile?.type.startsWith('image/') ? (
+                            <ImageIcon className="w-6 h-6 text-blue-600" />
+                          ) : (
+                            <FileText className="w-6 h-6 text-red-600" />
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-900">{selectedFile?.name}</p>
+                            <p className="text-sm text-gray-500">
+                              {selectedFile && (selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          </div>
+                        </>
                       ) : (
-                        <FileText className="w-6 h-6 text-red-600" />
+                        <>
+                          <Link className="w-6 h-6 text-green-600" />
+                          <div>
+                            <p className="font-medium text-gray-900">URL 输入</p>
+                            <p className="text-sm text-gray-500 break-all">{inputUrl}</p>
+                          </div>
+                        </>
                       )}
-                      <div>
-                        <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
                     </div>
                   </div>
                   
