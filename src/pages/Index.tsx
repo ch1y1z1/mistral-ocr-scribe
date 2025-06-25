@@ -21,6 +21,13 @@ const Index = () => {
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     setOcrResult('');
+    
+    if (file) {
+      toast({
+        title: "文件选择成功",
+        description: `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
+      });
+    }
   };
 
   const processOCR = async () => {
@@ -45,8 +52,20 @@ const Index = () => {
 
     setIsLoading(true);
     
+    // 开始处理 toast
+    toast({
+      title: "开始 OCR 处理",
+      description: "正在准备文件..."
+    });
+
     try {
       // Convert file to base64
+      const startConversion = Date.now();
+      toast({
+        title: "文件转换中",
+        description: "正在将图片转换为 Base64 格式..."
+      });
+
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -56,9 +75,23 @@ const Index = () => {
         reader.readAsDataURL(selectedFile);
       });
 
-      console.log('正在发送 OCR 请求...');
+      const conversionTime = Date.now() - startConversion;
+      toast({
+        title: "文件转换完成",
+        description: `Base64 转换耗时: ${conversionTime}ms`
+      });
+
+      console.log('文件转换完成，准备发送 API 请求...');
       console.log('文件类型:', selectedFile.type);
       console.log('文件大小:', selectedFile.size, 'bytes');
+      console.log('Base64 长度:', base64.length);
+
+      // 发送 API 请求
+      const requestStart = Date.now();
+      toast({
+        title: "发送 API 请求",
+        description: "正在调用 Mistral OCR API..."
+      });
 
       const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
@@ -74,7 +107,7 @@ const Index = () => {
               content: [
                 {
                   type: 'text',
-                  text: '请识别并提取这个图片中的所有文字内容。请保持原有的格式和结构。'
+                  text: '请直接提取图片中的所有文字内容，不要添加任何解释或修改，保持原始格式。'
                 },
                 {
                   type: 'image_url',
@@ -83,29 +116,58 @@ const Index = () => {
               ]
             }
           ],
-          max_tokens: 4096
+          max_tokens: 4096,
+          temperature: 0 // 设置为0以获得最一致的结果
         })
       });
 
+      const requestTime = Date.now() - requestStart;
       console.log('API 响应状态:', response.status);
+      console.log('API 请求耗时:', requestTime, 'ms');
+
+      toast({
+        title: "API 响应接收",
+        description: `请求耗时: ${requestTime}ms，状态: ${response.status}`
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('API 错误响应:', errorData);
+        
+        toast({
+          title: "API 请求失败",
+          description: `状态码: ${response.status}, 错误: ${errorData.error?.message || '未知错误'}`,
+          variant: "destructive"
+        });
+        
         throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
       }
 
+      // 解析响应
+      const parseStart = Date.now();
+      toast({
+        title: "解析响应",
+        description: "正在处理 OCR 结果..."
+      });
+
       const data = await response.json();
+      const parseTime = Date.now() - parseStart;
+      
       console.log('OCR 结果:', data);
+      console.log('响应解析耗时:', parseTime, 'ms');
       
       const extractedText = data.choices[0]?.message?.content || '未能提取到文字内容';
       
       setOcrResult(extractedText);
       
+      const totalTime = Date.now() - requestStart + conversionTime;
       toast({
-        title: "OCR完成",
-        description: "文字识别成功！"
+        title: "OCR 完成",
+        description: `总耗时: ${totalTime}ms，识别到 ${extractedText.length} 个字符`
       });
+
+      console.log('OCR 处理完成，总耗时:', totalTime, 'ms');
+      
     } catch (error) {
       console.error('OCR处理错误:', error);
       toast({
@@ -115,6 +177,10 @@ const Index = () => {
       });
     } finally {
       setIsLoading(false);
+      toast({
+        title: "处理结束",
+        description: "OCR 流程已完成"
+      });
     }
   };
 
