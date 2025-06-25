@@ -19,12 +19,14 @@ const Index = () => {
   const [inputUrl, setInputUrl] = useState<string>('');
   const [inputType, setInputType] = useState<'file' | 'url'>('file');
   const [ocrResult, setOcrResult] = useState<string>('');
+  const [extractedImages, setExtractedImages] = useState<Array<{id: string, base64: string, fileName: string}>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     setOcrResult('');
+    setExtractedImages([]);
     setInputType('file');
     
     if (file) {
@@ -39,6 +41,7 @@ const Index = () => {
     setInputUrl(url);
     setSelectedFile(null);
     setOcrResult('');
+    setExtractedImages([]);
     setInputType('url');
     
     if (url) {
@@ -49,45 +52,43 @@ const Index = () => {
     }
   };
 
-  // Upload PDF file to Mistral and get file URL
-  const uploadPdfFile = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('purpose', 'ocr');
-
-    console.log('开始上传 PDF 文件...');
+  // Convert PDF file to base64 for direct processing
+  const convertPdfToBase64 = async (file: File): Promise<string> => {
+    console.log('开始转换 PDF 文件为 base64...');
     toast({
-      title: "PDF 文件上传",
-      description: "正在上传 PDF 到 Mistral 服务器..."
+      title: "PDF 文件转换",
+      description: "正在将 PDF 转换为 base64 格式..."
     });
 
-    const uploadStart = Date.now();
-    const response = await fetch('https://api.mistral.ai/v1/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: formData
+    const startTime = Date.now();
+    
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1]; // Remove data:application/pdf;base64, prefix
+        
+        const conversionTime = Date.now() - startTime;
+        console.log(`PDF 转换耗时: ${conversionTime}ms`);
+        
+        toast({
+          title: "PDF 转换完成",
+          description: `Base64 转换耗时: ${conversionTime}ms`
+        });
+        
+        resolve(base64);
+      };
+      reader.onerror = () => {
+        console.error('PDF 文件读取失败');
+        toast({
+          title: "PDF 转换失败",
+          description: "无法读取 PDF 文件",
+          variant: "destructive"
+        });
+        reject(new Error('PDF 文件读取失败'));
+      };
+      reader.readAsDataURL(file);
     });
-
-    const uploadTime = Date.now() - uploadStart;
-    console.log(`PDF 上传耗时: ${uploadTime}ms`);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('PDF 上传失败:', errorData);
-      throw new Error(errorData.error?.message || `文件上传失败: ${response.status}`);
-    }
-
-    const uploadResult = await response.json();
-    console.log('PDF 上传成功:', uploadResult);
-
-    toast({
-      title: "PDF 上传完成",
-      description: `上传耗时: ${uploadTime}ms，文件ID: ${uploadResult.id}`
-    });
-
-    return `mistral://files/${uploadResult.id}`;
   };
 
   const processOCR = async () => {
@@ -136,20 +137,26 @@ const Index = () => {
           console.log('识别为文档 URL:', documentSource);
         }
       } else if (inputType === 'file' && selectedFile) {
-        // 文件处理 - 保持原有逻辑
+        // 文件处理 - 统一使用 base64 方式
+        const startConversion = Date.now();
+        
         if (selectedFile.type === 'application/pdf') {
-          // PDF 文件处理
-          const documentUrl = await uploadPdfFile(selectedFile);
+          // PDF 文件处理 - 转换为 base64
+          toast({
+            title: "PDF 转换",
+            description: "正在将 PDF 转换为 Base64 格式..."
+          });
+
+          const base64 = await convertPdfToBase64(selectedFile);
           
           documentSource = {
             type: "document_url",
-            document_url: documentUrl
+            document_url: `data:application/pdf;base64,${base64}`
           };
           
-          console.log('PDF 文档源:', documentSource);
+          console.log('PDF 文档源（base64）:', documentSource.type);
         } else {
           // 图片文件处理
-          const startConversion = Date.now();
           toast({
             title: "图片转换",
             description: "正在将图片转换为 Base64 格式..."
@@ -195,9 +202,9 @@ const Index = () => {
       });
 
       const ocrPayload = {
-        model: 'mistral-ocr-2505',
+        model: 'mistral-ocr-latest',
         document: documentSource,
-        include_image_base64: false
+        include_image_base64: true
       };
 
       console.log('OCR 请求载荷:', JSON.stringify(ocrPayload, null, 2));
@@ -246,8 +253,9 @@ const Index = () => {
       console.log('响应解析耗时:', parseTime, 'ms');
       
       let extractedText = '';
+      let allImages: Array<{id: string, base64: string, fileName: string}> = [];
       
-      // 更详细的数据结构检查和提取
+      // 根据官方文档结构提取文本和图片
       if (data && typeof data === 'object') {
         console.log('数据结构分析:');
         console.log('- data.pages 是否存在:', !!data.pages);
@@ -257,55 +265,104 @@ const Index = () => {
         if (data.pages && Array.isArray(data.pages) && data.pages.length > 0) {
           console.log('页面数量:', data.pages.length);
           
+          // 根据官方文档，每个页面包含 markdown 字段和 images 字段
+          const markdownContents: string[] = [];
+          
           data.pages.forEach((page: any, index: number) => {
-            console.log(`页面 ${index + 1}:`, page);
-            console.log(`- markdown 字段存在:`, !!page.markdown);
-            console.log(`- markdown 内容:`, page.markdown);
-            console.log(`- text 字段存在:`, !!page.text);
-            console.log(`- text 内容:`, page.text);
+            console.log(`页面 ${index + 1}:`, Object.keys(page));
+            
+            // 提取文本内容
+            if (page.markdown && typeof page.markdown === 'string') {
+              markdownContents.push(page.markdown);
+              console.log(`页面 ${index + 1} markdown 长度:`, page.markdown.length);
+            } else if (page.text && typeof page.text === 'string') {
+              markdownContents.push(page.text);
+              console.log(`页面 ${index + 1} text 长度:`, page.text.length);
+            } else {
+              console.log(`页面 ${index + 1} 没有可用的文本内容`);
+            }
+            
+            // 提取图片内容
+            if (page.images && Array.isArray(page.images) && page.images.length > 0) {
+              console.log(`页面 ${index + 1} 图片数量:`, page.images.length);
+              
+              page.images.forEach((image: any, imgIndex: number) => {
+                if (image.image_base64 && typeof image.image_base64 === 'string') {
+                  // 使用 image.id 如果存在，否则生成简单的文件名
+                  let fileName;
+                  if (image.id && typeof image.id === 'string') {
+                    // 如果 id 已经包含扩展名，直接使用；否则根据图片类型添加扩展名
+                    fileName = image.id.includes('.') ? image.id : `${image.id}.jpeg`;
+                  } else {
+                    // 生成简单的文件名，与 MD 中的引用保持一致
+                    fileName = `img-${imgIndex}.jpeg`;
+                  }
+                  
+                  // 检查图片数据格式并标准化
+                  let imageBase64 = image.image_base64;
+                  
+                  // 如果图片数据不是完整的 data URL，添加前缀
+                  if (!imageBase64.startsWith('data:')) {
+                    imageBase64 = `data:image/png;base64,${imageBase64}`;
+                  }
+                  
+                  allImages.push({
+                    id: image.id || `img-${imgIndex}`,
+                    base64: imageBase64,
+                    fileName: fileName
+                  });
+                  
+                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: ${fileName}`);
+                }
+              });
+            } else {
+              console.log(`页面 ${index + 1} 没有图片内容`);
+            }
           });
           
-          // 尝试多种提取方式
-          const markdownTexts = data.pages
-            .map((page: any) => page.markdown || page.text || '')
-            .filter((text: string) => text.trim().length > 0);
-          
-          if (markdownTexts.length > 0) {
-            extractedText = markdownTexts.join('\n\n').trim();
-            console.log('成功提取 markdown 文本，长度:', extractedText.length);
-          } else {
-            // 如果没有 markdown 或 text，尝试其他字段
-            const allTexts = data.pages
-              .map((page: any) => {
-                const possibleFields = ['content', 'extracted_text', 'result'];
-                for (const field of possibleFields) {
-                  if (page[field] && typeof page[field] === 'string') {
-                    return page[field];
-                  }
-                }
-                return '';
-              })
-              .filter((text: string) => text.trim().length > 0);
+          if (markdownContents.length > 0) {
+            extractedText = markdownContents.join('\n\n').trim();
             
-            if (allTexts.length > 0) {
-              extractedText = allTexts.join('\n\n').trim();
-              console.log('从其他字段提取文本，长度:', extractedText.length);
-            }
+            // 修复 MD 文件中图片路径，添加 images/ 前缀
+            extractedText = extractedText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+              // 如果图片路径不以 images/ 开头且不是绝对路径，添加 images/ 前缀
+              if (!src.startsWith('images/') && !src.startsWith('http') && !src.startsWith('/')) {
+                return `![${alt}](images/${src})`;
+              }
+              return match;
+            });
+            
+            console.log('成功提取文本内容，总长度:', extractedText.length);
+          } else {
+            console.log('所有页面都没有找到文本内容');
           }
         } else {
-          // 如果没有 pages 结构，检查其他可能的结构
-          console.log('没有 pages 结构，检查其他字段...');
-          const possibleTopLevelFields = ['text', 'content', 'result', 'extracted_text', 'markdown'];
+          // 如果没有 pages 结构，尝试直接查找文本字段
+          console.log('没有 pages 结构，检查直接的文本字段...');
+          const directTextFields = ['markdown', 'text', 'content', 'result'];
           
-          for (const field of possibleTopLevelFields) {
+          for (const field of directTextFields) {
             if (data[field] && typeof data[field] === 'string') {
               extractedText = data[field].trim();
-              console.log(`从顶级字段 ${field} 提取文本，长度:`, extractedText.length);
+              
+              // 修复 MD 文件中图片路径，添加 images/ 前缀
+              extractedText = extractedText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+                // 如果图片路径不以 images/ 开头且不是绝对路径，添加 images/ 前缀
+                if (!src.startsWith('images/') && !src.startsWith('http') && !src.startsWith('/')) {
+                  return `![${alt}](images/${src})`;
+                }
+                return match;
+              });
+              
+              console.log(`从字段 ${field} 提取文本，长度:`, extractedText.length);
               break;
             }
           }
         }
       }
+      
+      console.log('提取的图片数量:', allImages.length);
+      setExtractedImages(allImages);
       
       if (!extractedText || extractedText.trim().length === 0) {
         console.warn('未能提取到任何文字内容');
@@ -348,29 +405,51 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Mistral OCR 文字识别</h1>
-          <p className="text-blue-200 text-lg">上传图片/PDF文件或输入URL，智能提取文字内容</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+      {/* 背景装饰 */}
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iNCIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
+      
+      <div className="container mx-auto px-4 py-6 md:py-8 relative z-10">
+        {/* 标题区域 */}
+        <div className="text-center mb-6 md:mb-8">
+          <div className="inline-block p-3 bg-white/10 backdrop-blur-md rounded-2xl mb-4">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+              Mistral OCR 文字识别
+            </h1>
+          </div>
+          <div className="w-24 h-1 bg-gradient-to-r from-blue-400 to-purple-400 mx-auto rounded-full"></div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
+        <div className="grid xl:grid-cols-5 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {/* Left Column - API Key and Input Options */}
-          <div className="space-y-6">
+          <div className="xl:col-span-2 lg:col-span-1 space-y-4">
             <ApiKeyManager apiKey={apiKey} setApiKey={setApiKey} />
             
-            {/* Input Type Selector */}
-            <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-gray-800">选择输入方式</CardTitle>
+            {/* 文件输入与识别卡片 */}
+            <Card className="bg-white/95 backdrop-blur-lg border border-white/20 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:bg-white/98">
+              <CardHeader className="bg-gradient-to-r from-purple-50/50 to-pink-50/50 border-b border-gray-100/50">
+                <CardTitle className="flex items-center space-x-2 text-gray-800">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg">
+                    <Upload className="w-4 h-4 text-white" />
+                  </div>
+                  <span>文字识别</span>
+                </CardTitle>
+                <CardDescription>
+                  选择输入方式，上传文件或输入URL开始识别
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex space-x-4 mb-4">
+              <CardContent className="space-y-4">
+                {/* 输入方式选择 */}
+                <div className="flex space-x-2">
                   <Button
                     variant={inputType === 'file' ? 'default' : 'outline'}
                     onClick={() => setInputType('file')}
-                    className="flex-1"
+                    size="sm"
+                    className={`flex-1 transition-all duration-200 ${
+                      inputType === 'file' 
+                        ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg' 
+                        : 'hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700'
+                    }`}
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     上传文件
@@ -378,74 +457,56 @@ const Index = () => {
                   <Button
                     variant={inputType === 'url' ? 'default' : 'outline'}
                     onClick={() => setInputType('url')}
-                    className="flex-1"
+                    size="sm"
+                    className={`flex-1 transition-all duration-200 ${
+                      inputType === 'url' 
+                        ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg' 
+                        : 'hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700'
+                    }`}
                   >
                     <Link className="w-4 h-4 mr-2" />
                     输入URL
                   </Button>
                 </div>
                 
-                {inputType === 'file' ? (
-                  <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
-                ) : (
-                  <UrlInput onUrlInput={handleUrlInput} inputUrl={inputUrl} />
-                )}
+                {/* 输入区域 */}
+                <div className="border-2 border-dashed border-gradient-to-r from-purple-200 to-pink-200 bg-gradient-to-r from-purple-50/30 to-pink-50/30 rounded-xl p-4 transition-all duration-200 hover:border-purple-300 hover:bg-purple-50/40">
+                  {inputType === 'file' ? (
+                    <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+                  ) : (
+                    <UrlInput onUrlInput={handleUrlInput} inputUrl={inputUrl} />
+                  )}
+                </div>
+                
+                {/* 识别按钮 */}
+                <Button 
+                  onClick={processOCR} 
+                  disabled={isLoading || !apiKey || (!selectedFile && !inputUrl)}
+                  className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl disabled:transform-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg border border-white/20"
+                >
+                  {isLoading ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>正在识别...</span>
+                    </div>
+                  ) : !apiKey ? (
+                    '请先配置 API 密钥'
+                  ) : (!selectedFile && !inputUrl) ? (
+                    '请选择文件或输入 URL'
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <FileText className="w-4 h-4" />
+                      <span>开始识别文字</span>
+                    </div>
+                  )}
+                </Button>
               </CardContent>
             </Card>
-            
-            {(selectedFile || inputUrl) && (
-              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-xl">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      {inputType === 'file' ? (
-                        <>
-                          {selectedFile?.type.startsWith('image/') ? (
-                            <ImageIcon className="w-6 h-6 text-blue-600" />
-                          ) : (
-                            <FileText className="w-6 h-6 text-red-600" />
-                          )}
-                          <div>
-                            <p className="font-medium text-gray-900">{selectedFile?.name}</p>
-                            <p className="text-sm text-gray-500">
-                              {selectedFile && (selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <Link className="w-6 h-6 text-green-600" />
-                          <div>
-                            <p className="font-medium text-gray-900">URL 输入</p>
-                            <p className="text-sm text-gray-500 break-all">{inputUrl}</p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    onClick={processOCR} 
-                    disabled={isLoading || !apiKey}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:transform-none disabled:opacity-50"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>正在识别...</span>
-                      </div>
-                    ) : (
-                      '开始识别文字'
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
           {/* Right Column - OCR Results */}
-          <div>
-            <OcrResults result={ocrResult} />
+          <div className="xl:col-span-3 lg:col-span-2">
+            <OcrResults result={ocrResult} images={extractedImages} />
           </div>
         </div>
       </div>
