@@ -36,15 +36,15 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
   const handleFileSelection = (file: File) => {
     if (!file) return;
 
+    // 只支持图片格式，因为 Mistral pixtral 模型不支持 PDF
     const allowedTypes = [
-      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp',
-      'application/pdf'
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'
     ];
 
     if (!allowedTypes.includes(file.type)) {
       toast({
         title: "文件格式不支持",
-        description: "请上传图片文件（JPG, PNG, GIF, BMP, WebP）或PDF文件",
+        description: "目前只支持图片文件（JPG, PNG, GIF, BMP, WebP）。PDF 文件暂不支持。",
         variant: "destructive"
       });
       return;
@@ -89,7 +89,7 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
           <span>文件上传</span>
         </CardTitle>
         <CardDescription>
-          支持图片格式（JPG, PNG, GIF, BMP, WebP）和PDF文件，最大10MB
+          支持图片格式（JPG, PNG, GIF, BMP, WebP），最大10MB
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -110,13 +110,13 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
               拖拽文件到此处或点击上传
             </p>
             <p className="text-sm text-gray-500">
-              支持 JPG, PNG, GIF, BMP, WebP, PDF 格式
+              支持 JPG, PNG, GIF, BMP, WebP 格式
             </p>
             <input
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept="image/*,.pdf"
+              accept="image/*"
               onChange={handleFileInputChange}
             />
           </div>

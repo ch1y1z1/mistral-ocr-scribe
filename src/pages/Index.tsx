@@ -33,6 +33,16 @@ const Index = () => {
       return;
     }
 
+    // 检查文件类型
+    if (!selectedFile.type.startsWith('image/')) {
+      toast({
+        title: "文件格式错误",
+        description: "Mistral OCR 目前只支持图片文件，不支持 PDF 文件",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -45,6 +55,10 @@ const Index = () => {
         };
         reader.readAsDataURL(selectedFile);
       });
+
+      console.log('正在发送 OCR 请求...');
+      console.log('文件类型:', selectedFile.type);
+      console.log('文件大小:', selectedFile.size, 'bytes');
 
       const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
@@ -60,7 +74,7 @@ const Index = () => {
               content: [
                 {
                   type: 'text',
-                  text: '请识别并提取这个图片或文档中的所有文字内容。请保持原有的格式和结构。'
+                  text: '请识别并提取这个图片中的所有文字内容。请保持原有的格式和结构。'
                 },
                 {
                   type: 'image_url',
@@ -73,12 +87,17 @@ const Index = () => {
         })
       });
 
+      console.log('API 响应状态:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('API 错误响应:', errorData);
         throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('OCR 结果:', data);
+      
       const extractedText = data.choices[0]?.message?.content || '未能提取到文字内容';
       
       setOcrResult(extractedText);
@@ -104,7 +123,7 @@ const Index = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Mistral OCR 文字识别</h1>
-          <p className="text-blue-200 text-lg">上传图片或PDF文件，智能提取文字内容</p>
+          <p className="text-blue-200 text-lg">上传图片文件，智能提取文字内容</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
@@ -118,11 +137,7 @@ const Index = () => {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
-                      {selectedFile.type.startsWith('image/') ? (
-                        <ImageIcon className="w-6 h-6 text-blue-600" />
-                      ) : (
-                        <FileText className="w-6 h-6 text-red-600" />
-                      )}
+                      <ImageIcon className="w-6 h-6 text-blue-600" />
                       <div>
                         <p className="font-medium text-gray-900">{selectedFile.name}</p>
                         <p className="text-sm text-gray-500">
