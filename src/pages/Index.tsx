@@ -1,4 +1,3 @@
-
 import { useState, useRef } from 'react';
 import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,12 +29,19 @@ const Index = () => {
     }
   };
 
-  // Upload PDF file to Mistral and get signed URL
+  // Upload PDF file to Mistral and get file URL
   const uploadPdfFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('purpose', 'ocr');
 
+    console.log('开始上传 PDF 文件...');
+    toast({
+      title: "PDF 文件上传",
+      description: "正在上传 PDF 到 Mistral 服务器..."
+    });
+
+    const uploadStart = Date.now();
     const response = await fetch('https://api.mistral.ai/v1/files', {
       method: 'POST',
       headers: {
@@ -44,30 +50,25 @@ const Index = () => {
       body: formData
     });
 
+    const uploadTime = Date.now() - uploadStart;
+    console.log(`PDF 上传耗时: ${uploadTime}ms`);
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('PDF 上传失败:', errorData);
       throw new Error(errorData.error?.message || `文件上传失败: ${response.status}`);
     }
 
     const uploadResult = await response.json();
-    console.log('文件上传结果:', uploadResult);
+    console.log('PDF 上传成功:', uploadResult);
 
-    // Get signed URL
-    const signedUrlResponse = await fetch(`https://api.mistral.ai/v1/files/${uploadResult.id}/signed-url`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      }
+    toast({
+      title: "PDF 上传完成",
+      description: `上传耗时: ${uploadTime}ms，文件ID: ${uploadResult.id}`
     });
 
-    if (!signedUrlResponse.ok) {
-      throw new Error(`获取签名URL失败: ${signedUrlResponse.status}`);
-    }
-
-    const signedUrlResult = await signedUrlResponse.json();
-    console.log('签名URL结果:', signedUrlResult);
-    
-    return signedUrlResult.url;
+    // 直接使用文件 ID 构建 document_url，而不是获取签名 URL
+    return `mistral://files/${uploadResult.id}`;
   };
 
   const processOCR = async () => {
@@ -82,7 +83,6 @@ const Index = () => {
 
     setIsLoading(true);
     
-    // 开始处理 toast
     toast({
       title: "开始 OCR 处理",
       description: "正在准备文件..."
@@ -93,29 +93,19 @@ const Index = () => {
 
       if (selectedFile.type === 'application/pdf') {
         // PDF 文件处理
-        toast({
-          title: "PDF 文件上传中",
-          description: "正在上传 PDF 到 Mistral 服务器..."
-        });
-
-        const uploadStart = Date.now();
-        const signedUrl = await uploadPdfFile(selectedFile);
-        const uploadTime = Date.now() - uploadStart;
-
-        toast({
-          title: "PDF 上传完成",
-          description: `上传耗时: ${uploadTime}ms`
-        });
-
+        const documentUrl = await uploadPdfFile(selectedFile);
+        
         documentSource = {
           type: "document_url",
-          document_url: signedUrl
+          document_url: documentUrl
         };
+        
+        console.log('PDF 文档源:', documentSource);
       } else {
         // 图片文件处理
         const startConversion = Date.now();
         toast({
-          title: "文件转换中",
+          title: "图片转换",
           description: "正在将图片转换为 Base64 格式..."
         });
 
@@ -123,14 +113,16 @@ const Index = () => {
           const reader = new FileReader();
           reader.onloadend = () => {
             const result = reader.result as string;
-            resolve(result.split(',')[1]); // Remove data:image/...;base64, prefix
+            resolve(result.split(',')[1]);
           };
           reader.readAsDataURL(selectedFile);
         });
 
         const conversionTime = Date.now() - startConversion;
+        console.log(`图片转换耗时: ${conversionTime}ms`);
+        
         toast({
-          title: "文件转换完成",
+          title: "图片转换完成",
           description: `Base64 转换耗时: ${conversionTime}ms`
         });
 
@@ -140,16 +132,23 @@ const Index = () => {
         };
       }
 
-      console.log('文件处理完成，准备发送 OCR API 请求...');
+      console.log('准备发送 OCR API 请求...');
       console.log('文件类型:', selectedFile.type);
       console.log('文件大小:', selectedFile.size, 'bytes');
 
-      // 发送 OCR API 请求
       const requestStart = Date.now();
       toast({
-        title: "发送 OCR API 请求",
-        description: "正在调用 Mistral OCR API..."
+        title: "调用 OCR API",
+        description: "正在发送请求到 Mistral OCR..."
       });
+
+      const ocrPayload = {
+        model: 'mistral-ocr-2505',
+        document: documentSource,
+        include_image_base64: false
+      };
+
+      console.log('OCR 请求载荷:', JSON.stringify(ocrPayload, null, 2));
 
       const response = await fetch('https://api.mistral.ai/v1/ocr', {
         method: 'POST',
@@ -157,11 +156,7 @@ const Index = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-          model: 'mistral-ocr-2505',
-          document: documentSource,
-          include_image_base64: false
-        })
+        body: JSON.stringify(ocrPayload)
       });
 
       const requestTime = Date.now() - requestStart;
@@ -169,7 +164,7 @@ const Index = () => {
       console.log('OCR API 请求耗时:', requestTime, 'ms');
 
       toast({
-        title: "OCR API 响应接收",
+        title: "收到 OCR 响应",
         description: `请求耗时: ${requestTime}ms，状态: ${response.status}`
       });
 
@@ -178,28 +173,26 @@ const Index = () => {
         console.error('OCR API 错误响应:', errorData);
         
         toast({
-          title: "OCR API 请求失败",
-          description: `状态码: ${response.status}, 错误: ${errorData.error?.message || '未知错误'}`,
+          title: "OCR API 失败",
+          description: `状态: ${response.status}, 错误: ${errorData.error?.message || '未知错误'}`,
           variant: "destructive"
         });
         
         throw new Error(errorData.error?.message || `OCR API请求失败: ${response.status}`);
       }
 
-      // 解析响应
       const parseStart = Date.now();
       toast({
-        title: "解析 OCR 响应",
+        title: "解析响应",
         description: "正在处理 OCR 结果..."
       });
 
       const data = await response.json();
       const parseTime = Date.now() - parseStart;
       
-      console.log('OCR 结果:', data);
+      console.log('OCR 响应数据:', data);
       console.log('响应解析耗时:', parseTime, 'ms');
       
-      // 提取所有页面的文字内容
       let extractedText = '';
       if (data.pages && data.pages.length > 0) {
         extractedText = data.pages.map((page: any) => page.markdown || '').join('\n\n').trim();
@@ -207,6 +200,11 @@ const Index = () => {
       
       if (!extractedText) {
         extractedText = '未能提取到文字内容';
+        toast({
+          title: "警告",
+          description: "没有识别到任何文字内容",
+          variant: "destructive"
+        });
       }
       
       setOcrResult(extractedText);
@@ -214,15 +212,16 @@ const Index = () => {
       const totalTime = requestTime + parseTime;
       toast({
         title: "OCR 完成",
-        description: `总耗时: ${totalTime}ms，识别到 ${extractedText.length} 个字符`
+        description: `总耗时: ${totalTime}ms，识别 ${extractedText.length} 个字符`
       });
 
       console.log('OCR 处理完成，总耗时:', totalTime, 'ms');
+      console.log('提取的文字长度:', extractedText.length);
       
     } catch (error) {
       console.error('OCR处理错误:', error);
       toast({
-        title: "OCR失败",
+        title: "OCR 失败",
         description: error instanceof Error ? error.message : '处理过程中发生错误',
         variant: "destructive"
       });
