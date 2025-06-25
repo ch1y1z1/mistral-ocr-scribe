@@ -30,21 +30,51 @@ const Index = () => {
     }
   };
 
+  // Upload PDF file to Mistral and get signed URL
+  const uploadPdfFile = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('purpose', 'ocr');
+
+    const response = await fetch('https://api.mistral.ai/v1/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `文件上传失败: ${response.status}`);
+    }
+
+    const uploadResult = await response.json();
+    console.log('文件上传结果:', uploadResult);
+
+    // Get signed URL
+    const signedUrlResponse = await fetch(`https://api.mistral.ai/v1/files/${uploadResult.id}/signed-url`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+
+    if (!signedUrlResponse.ok) {
+      throw new Error(`获取签名URL失败: ${signedUrlResponse.status}`);
+    }
+
+    const signedUrlResult = await signedUrlResponse.json();
+    console.log('签名URL结果:', signedUrlResult);
+    
+    return signedUrlResult.url;
+  };
+
   const processOCR = async () => {
     if (!selectedFile || !apiKey) {
       toast({
         title: "错误",
         description: "请选择文件并输入API密钥",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // 检查文件类型
-    if (!selectedFile.type.startsWith('image/')) {
-      toast({
-        title: "文件格式错误",
-        description: "Mistral OCR 目前只支持图片文件，不支持 PDF 文件",
         variant: "destructive"
       });
       return;
@@ -59,94 +89,107 @@ const Index = () => {
     });
 
     try {
-      // Convert file to base64
-      const startConversion = Date.now();
-      toast({
-        title: "文件转换中",
-        description: "正在将图片转换为 Base64 格式..."
-      });
+      let documentSource: any = null;
 
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]); // Remove data:image/...;base64, prefix
+      if (selectedFile.type === 'application/pdf') {
+        // PDF 文件处理
+        toast({
+          title: "PDF 文件上传中",
+          description: "正在上传 PDF 到 Mistral 服务器..."
+        });
+
+        const uploadStart = Date.now();
+        const signedUrl = await uploadPdfFile(selectedFile);
+        const uploadTime = Date.now() - uploadStart;
+
+        toast({
+          title: "PDF 上传完成",
+          description: `上传耗时: ${uploadTime}ms`
+        });
+
+        documentSource = {
+          type: "document_url",
+          document_url: signedUrl
         };
-        reader.readAsDataURL(selectedFile);
-      });
+      } else {
+        // 图片文件处理
+        const startConversion = Date.now();
+        toast({
+          title: "文件转换中",
+          description: "正在将图片转换为 Base64 格式..."
+        });
 
-      const conversionTime = Date.now() - startConversion;
-      toast({
-        title: "文件转换完成",
-        description: `Base64 转换耗时: ${conversionTime}ms`
-      });
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]); // Remove data:image/...;base64, prefix
+          };
+          reader.readAsDataURL(selectedFile);
+        });
 
-      console.log('文件转换完成，准备发送 API 请求...');
+        const conversionTime = Date.now() - startConversion;
+        toast({
+          title: "文件转换完成",
+          description: `Base64 转换耗时: ${conversionTime}ms`
+        });
+
+        documentSource = {
+          type: "image_url",
+          image_url: `data:${selectedFile.type};base64,${base64}`
+        };
+      }
+
+      console.log('文件处理完成，准备发送 OCR API 请求...');
       console.log('文件类型:', selectedFile.type);
       console.log('文件大小:', selectedFile.size, 'bytes');
-      console.log('Base64 长度:', base64.length);
 
-      // 发送 API 请求
+      // 发送 OCR API 请求
       const requestStart = Date.now();
       toast({
-        title: "发送 API 请求",
+        title: "发送 OCR API 请求",
         description: "正在调用 Mistral OCR API..."
       });
 
-      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      const response = await fetch('https://api.mistral.ai/v1/ocr', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'pixtral-12b-2409',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: '请直接提取图片中的所有文字内容，不要添加任何解释或修改，保持原始格式。'
-                },
-                {
-                  type: 'image_url',
-                  image_url: `data:${selectedFile.type};base64,${base64}`
-                }
-              ]
-            }
-          ],
-          max_tokens: 4096,
-          temperature: 0 // 设置为0以获得最一致的结果
+          model: 'mistral-ocr-2505',
+          document: documentSource,
+          include_image_base64: false
         })
       });
 
       const requestTime = Date.now() - requestStart;
-      console.log('API 响应状态:', response.status);
-      console.log('API 请求耗时:', requestTime, 'ms');
+      console.log('OCR API 响应状态:', response.status);
+      console.log('OCR API 请求耗时:', requestTime, 'ms');
 
       toast({
-        title: "API 响应接收",
+        title: "OCR API 响应接收",
         description: `请求耗时: ${requestTime}ms，状态: ${response.status}`
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('API 错误响应:', errorData);
+        console.error('OCR API 错误响应:', errorData);
         
         toast({
-          title: "API 请求失败",
+          title: "OCR API 请求失败",
           description: `状态码: ${response.status}, 错误: ${errorData.error?.message || '未知错误'}`,
           variant: "destructive"
         });
         
-        throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
+        throw new Error(errorData.error?.message || `OCR API请求失败: ${response.status}`);
       }
 
       // 解析响应
       const parseStart = Date.now();
       toast({
-        title: "解析响应",
+        title: "解析 OCR 响应",
         description: "正在处理 OCR 结果..."
       });
 
@@ -156,11 +199,19 @@ const Index = () => {
       console.log('OCR 结果:', data);
       console.log('响应解析耗时:', parseTime, 'ms');
       
-      const extractedText = data.choices[0]?.message?.content || '未能提取到文字内容';
+      // 提取所有页面的文字内容
+      let extractedText = '';
+      if (data.pages && data.pages.length > 0) {
+        extractedText = data.pages.map((page: any) => page.markdown || '').join('\n\n').trim();
+      }
+      
+      if (!extractedText) {
+        extractedText = '未能提取到文字内容';
+      }
       
       setOcrResult(extractedText);
       
-      const totalTime = Date.now() - requestStart + conversionTime;
+      const totalTime = requestTime + parseTime;
       toast({
         title: "OCR 完成",
         description: `总耗时: ${totalTime}ms，识别到 ${extractedText.length} 个字符`
@@ -189,7 +240,7 @@ const Index = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Mistral OCR 文字识别</h1>
-          <p className="text-blue-200 text-lg">上传图片文件，智能提取文字内容</p>
+          <p className="text-blue-200 text-lg">上传图片或PDF文件，智能提取文字内容</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
@@ -203,7 +254,11 @@ const Index = () => {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
-                      <ImageIcon className="w-6 h-6 text-blue-600" />
+                      {selectedFile.type.startsWith('image/') ? (
+                        <ImageIcon className="w-6 h-6 text-blue-600" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-red-600" />
+                      )}
                       <div>
                         <p className="font-medium text-gray-900">{selectedFile.name}</p>
                         <p className="text-sm text-gray-500">
