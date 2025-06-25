@@ -1,3 +1,4 @@
+
 import { useState, useRef } from 'react';
 import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -67,7 +68,6 @@ const Index = () => {
       description: `上传耗时: ${uploadTime}ms，文件ID: ${uploadResult.id}`
     });
 
-    // 直接使用文件 ID 构建 document_url，而不是获取签名 URL
     return `mistral://files/${uploadResult.id}`;
   };
 
@@ -190,21 +190,82 @@ const Index = () => {
       const data = await response.json();
       const parseTime = Date.now() - parseStart;
       
-      console.log('OCR 响应数据:', data);
+      console.log('OCR 完整响应数据:', JSON.stringify(data, null, 2));
       console.log('响应解析耗时:', parseTime, 'ms');
       
       let extractedText = '';
-      if (data.pages && data.pages.length > 0) {
-        extractedText = data.pages.map((page: any) => page.markdown || '').join('\n\n').trim();
+      
+      // 更详细的数据结构检查和提取
+      if (data && typeof data === 'object') {
+        console.log('数据结构分析:');
+        console.log('- data.pages 是否存在:', !!data.pages);
+        console.log('- data.pages 类型:', typeof data.pages);
+        console.log('- data.pages 是否为数组:', Array.isArray(data.pages));
+        
+        if (data.pages && Array.isArray(data.pages) && data.pages.length > 0) {
+          console.log('页面数量:', data.pages.length);
+          
+          data.pages.forEach((page: any, index: number) => {
+            console.log(`页面 ${index + 1}:`, page);
+            console.log(`- markdown 字段存在:`, !!page.markdown);
+            console.log(`- markdown 内容:`, page.markdown);
+            console.log(`- text 字段存在:`, !!page.text);
+            console.log(`- text 内容:`, page.text);
+          });
+          
+          // 尝试多种提取方式
+          const markdownTexts = data.pages
+            .map((page: any) => page.markdown || page.text || '')
+            .filter((text: string) => text.trim().length > 0);
+          
+          if (markdownTexts.length > 0) {
+            extractedText = markdownTexts.join('\n\n').trim();
+            console.log('成功提取 markdown 文本，长度:', extractedText.length);
+          } else {
+            // 如果没有 markdown 或 text，尝试其他字段
+            const allTexts = data.pages
+              .map((page: any) => {
+                const possibleFields = ['content', 'extracted_text', 'result'];
+                for (const field of possibleFields) {
+                  if (page[field] && typeof page[field] === 'string') {
+                    return page[field];
+                  }
+                }
+                return '';
+              })
+              .filter((text: string) => text.trim().length > 0);
+            
+            if (allTexts.length > 0) {
+              extractedText = allTexts.join('\n\n').trim();
+              console.log('从其他字段提取文本，长度:', extractedText.length);
+            }
+          }
+        } else {
+          // 如果没有 pages 结构，检查其他可能的结构
+          console.log('没有 pages 结构，检查其他字段...');
+          const possibleTopLevelFields = ['text', 'content', 'result', 'extracted_text', 'markdown'];
+          
+          for (const field of possibleTopLevelFields) {
+            if (data[field] && typeof data[field] === 'string') {
+              extractedText = data[field].trim();
+              console.log(`从顶级字段 ${field} 提取文本，长度:`, extractedText.length);
+              break;
+            }
+          }
+        }
       }
       
-      if (!extractedText) {
-        extractedText = '未能提取到文字内容';
+      if (!extractedText || extractedText.trim().length === 0) {
+        console.warn('未能提取到任何文字内容');
+        extractedText = '未能提取到文字内容，请检查文件格式或重试';
+        
         toast({
           title: "警告",
           description: "没有识别到任何文字内容",
           variant: "destructive"
         });
+      } else {
+        console.log('最终提取的文字:', extractedText.substring(0, 200) + '...');
       }
       
       setOcrResult(extractedText);
