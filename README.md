@@ -1,73 +1,159 @@
-# Welcome to your Lovable project
+# Mistral OCR 文字识别
 
-## Project info
+一个基于 Mistral AI OCR API 的现代化文字识别应用，支持图片和 PDF 文档的智能文字提取。
 
-**URL**: https://lovable.dev/projects/69646458-c673-490f-8e58-fdfbc245cbef
+## 🌟 在线体验
 
-## How can I edit this code?
+**立即访问**: [https://mistral-ocr-scribe.lovable.app/](https://mistral-ocr-scribe.lovable.app/)
 
-There are several ways of editing your application.
+## ✨ 主要功能
 
-**Use Lovable**
+### 📄 多格式支持
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/69646458-c673-490f-8e58-fdfbc245cbef) and start prompting.
+- **图片识别**: JPG, PNG, GIF, BMP, WebP
+- **文档识别**: PDF 文档
+- **URL输入**: 支持在线图片和文档链接
 
-Changes made via Lovable will be committed automatically to this repo.
+### 🎯 智能提取
 
-**Use your preferred IDE**
+- **文字识别**: 高精度的 OCR 文字识别
+- **图片提取**: 自动提取文档中的图片内容
+- **Markdown 输出**: 识别结果自动格式化为 Markdown
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 💾 多种下载方式
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **复制文字**: 一键复制识别结果
+- **下载 Markdown**: 保存为 .md 格式文件
+- **完整压缩包**: 包含文字和图片的完整压缩包
+  - `ocr-result.md` - Markdown 格式的识别结果
+  - `images/` 文件夹 - 提取的所有图片
 
-Follow these steps:
+### 🎨 现代化界面
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+- **玻璃态设计**: 现代美观的毛玻璃效果
+- **响应式布局**: 完美适配桌面端和移动端
+- **智能折叠**: API 配置卡片可折叠节省空间
+- **实时反馈**: 详细的处理进度和状态提示
+
+## 🚀 快速开始
+
+### 1. 配置 API 密钥
+
+- 获取 [Mistral AI API 密钥](https://console.mistral.ai/)
+- 在应用中输入你的 API 密钥（安全存储在本地）
+
+### 2. 上传文件或输入 URL
+
+- **文件上传**: 拖拽或点击上传图片/PDF
+- **URL 输入**: 粘贴在线文件链接
+
+### 3. 开始识别
+
+- 点击"开始识别文字"按钮
+- 等待 AI 处理完成
+- 查看和下载识别结果
+
+## 🛠 技术栈
+
+- **前端框架**: React 18 + TypeScript
+- **构建工具**: Vite
+- **样式方案**: Tailwind CSS + shadcn/ui
+- **图标库**: Lucide React
+- **AI服务**: Mistral AI OCR API
+- **文件处理**: JSZip (压缩包生成)
+
+## 📦 本地开发
+
+### 环境要求
+
+- Node.js 18+
+- npm 或 yarn
+
+### 安装步骤
+
+```bash
+# 克隆项目
 git clone <YOUR_GIT_URL>
+cd mistral-ocr-scribe
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# 安装依赖
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 启动开发服务器
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### 构建部署
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+# 构建生产版本
+npm run build
 
-**Use GitHub Codespaces**
+# 预览构建结果
+npm run preview
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📁 项目结构
 
-## What technologies are used for this project?
+```text
+src/
+├── components/           # React 组件
+│   ├── ui/              # shadcn/ui 基础组件
+│   ├── ApiKeyManager.tsx # API 密钥管理
+│   ├── FileUpload.tsx   # 文件上传组件
+│   ├── UrlInput.tsx     # URL 输入组件
+│   └── OcrResults.tsx   # 结果展示组件
+├── pages/
+│   └── Index.tsx        # 主页面
+├── hooks/               # React Hooks
+└── lib/                 # 工具函数
+```
 
-This project is built with:
+## 🔧 核心特性
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### API 密钥管理
 
-## How can I deploy this project?
+- 本地安全存储
+- 可折叠界面节省空间
+- 实时配置状态显示
 
-Simply open [Lovable](https://lovable.dev/projects/69646458-c673-490f-8e58-fdfbc245cbef) and click on Share -> Publish.
+### 文件处理
 
-## Can I connect a custom domain to my Lovable project?
+- 支持拖拽上传
+- 文件类型验证
+- 大小限制检查（20MB）
+- 自动 Base64 转换
 
-Yes, you can!
+### 智能识别
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Mistral OCR 最新模型
+- 图片和文档同时支持
+- 自动图片提取和命名
+- Markdown 路径自动修正
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### 下载功能
+
+- 单独文字下载（.md）
+- 完整压缩包下载（.zip）
+- 图片路径自动匹配
+- 文件名智能生成
+
+## 🎨 设计特色
+
+- **玻璃态效果**: 毛玻璃背景增强视觉层次
+- **渐变配色**: 蓝紫粉三色渐变主题
+- **图标容器**: 每个功能都有专属渐变图标
+- **悬停动画**: 丰富的交互反馈效果
+- **响应式设计**: 移动端优化显示
+
+## 📞 支持与反馈
+
+如果你遇到问题或有改进建议，欢迎：
+
+- 提交 GitHub Issues
+
+---
+
+**在线体验**: [https://mistral-ocr-scribe.lovable.app/](https://mistral-ocr-scribe.lovable.app/)
+
+Made with ❤️ using Mistral AI & Lovable & Claude Code
