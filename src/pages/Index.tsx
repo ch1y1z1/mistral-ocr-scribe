@@ -1,11 +1,161 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import { useState, useRef } from 'react';
+import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import FileUpload from '@/components/FileUpload';
+import ApiKeyManager from '@/components/ApiKeyManager';
+import OcrResults from '@/components/OcrResults';
 
 const Index = () => {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('mistral-api-key') || '');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [ocrResult, setOcrResult] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleFileSelect = (file: File) => {
+    setSelectedFile(file);
+    setOcrResult('');
+  };
+
+  const processOCR = async () => {
+    if (!selectedFile || !apiKey) {
+      toast({
+        title: "错误",
+        description: "请选择文件并输入API密钥",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      // Convert file to base64
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]); // Remove data:image/...;base64, prefix
+        };
+        reader.readAsDataURL(selectedFile);
+      });
+
+      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'pixtral-12b-2409',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: '请识别并提取这个图片或文档中的所有文字内容。请保持原有的格式和结构。'
+                },
+                {
+                  type: 'image_url',
+                  image_url: `data:${selectedFile.type};base64,${base64}`
+                }
+              ]
+            }
+          ],
+          max_tokens: 4096
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const extractedText = data.choices[0]?.message?.content || '未能提取到文字内容';
+      
+      setOcrResult(extractedText);
+      
+      toast({
+        title: "OCR完成",
+        description: "文字识别成功！"
+      });
+    } catch (error) {
+      console.error('OCR处理错误:', error);
+      toast({
+        title: "OCR失败",
+        description: error instanceof Error ? error.message : '处理过程中发生错误',
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-2">Mistral OCR 文字识别</h1>
+          <p className="text-blue-200 text-lg">上传图片或PDF文件，智能提取文字内容</p>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
+          {/* Left Column - API Key and File Upload */}
+          <div className="space-y-6">
+            <ApiKeyManager apiKey={apiKey} setApiKey={setApiKey} />
+            <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+            
+            {selectedFile && (
+              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      {selectedFile.type.startsWith('image/') ? (
+                        <ImageIcon className="w-6 h-6 text-blue-600" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-red-600" />
+                      )}
+                      <div>
+                        <p className="font-medium text-gray-900">{selectedFile.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    onClick={processOCR} 
+                    disabled={isLoading || !apiKey}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:transform-none disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>正在识别...</span>
+                      </div>
+                    ) : (
+                      '开始识别文字'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Right Column - OCR Results */}
+          <div>
+            <OcrResults result={ocrResult} />
+          </div>
+        </div>
       </div>
     </div>
   );
