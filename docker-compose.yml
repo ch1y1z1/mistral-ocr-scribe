@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  mistral-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mistral-ocr-app
+    ports:
+      - "8720:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    labels:
+      - "com.example.app=mistral-ocr"
+      - "com.example.environment=production"
+
+volumes:
+  node_modules:
+    driver: local
