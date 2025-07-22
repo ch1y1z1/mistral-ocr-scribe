@@ -5,11 +5,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
+import MarkdownPreview from '@/components/MarkdownPreview';
 
 interface ExtractedImage {
   id: string;
   base64: string;
   fileName: string;
+  isHostedUrl?: boolean;
 }
 
 interface OcrResultsProps {
@@ -64,16 +66,33 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
       if (images.length > 0) {
         const imagesFolder = zip.folder('images');
         
-        images.forEach(image => {
+        // 处理每个图片
+        for (const image of images) {
           if (imagesFolder) {
-            // 清理 base64 数据，确保没有 data URL 前缀
-            let cleanBase64 = image.base64;
-            if (cleanBase64.includes(',')) {
-              cleanBase64 = cleanBase64.split(',')[1];
+            if (image.isHostedUrl) {
+              // 对于托管地址，需要先下载图片内容
+              try {
+                const response = await fetch(image.base64);
+                const blob = await response.blob();
+                imagesFolder.file(image.fileName, blob);
+              } catch (error) {
+                console.error(`下载托管图片失败: ${image.fileName}`, error);
+                // 如果下载失败，跳过这个图片
+                continue;
+              }
+            } else {
+              // 清理 base64 数据，确保没有 data URL 前缀
+              let cleanBase64 = image.base64;
+              if (cleanBase64.startsWith('data:')) {
+                const base64Data = cleanBase64.split(',')[1];
+                if (base64Data) {
+                  cleanBase64 = base64Data;
+                }
+              }
+              imagesFolder.file(image.fileName, cleanBase64, { base64: true });
             }
-            imagesFolder.file(image.fileName, cleanBase64, { base64: true });
           }
-        });
+        }
       }
       
       // 生成压缩包
@@ -105,28 +124,44 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
 
   const downloadImage = (image: ExtractedImage) => {
     try {
-      // 清理 base64 数据，确保没有 data URL 前缀
-      let cleanBase64 = image.base64;
-      if (cleanBase64.includes(',')) {
-        cleanBase64 = cleanBase64.split(',')[1];
+      if (image.isHostedUrl) {
+        // 对于托管地址，直接创建下载链接
+        const a = document.createElement('a');
+        a.href = image.base64;
+        a.download = image.fileName;
+        a.target = '_blank'; // 在新标签页打开，以防同源策略问题
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        // 对于 base64 数据，转换为 blob 下载
+        let cleanBase64 = image.base64;
+        
+        // 处理 data URL
+        if (cleanBase64.startsWith('data:')) {
+          const base64Data = cleanBase64.split(',')[1];
+          if (base64Data) {
+            cleanBase64 = base64Data;
+          }
+        }
+        
+        const byteCharacters = atob(cleanBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'image/png' });
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = image.fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       }
-      
-      const byteCharacters = atob(cleanBase64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'image/png' });
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = image.fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
       
       toast({
         title: "图片下载成功",
@@ -197,15 +232,20 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
             </div>
             
             <Tabs defaultValue="text" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="text" className="flex items-center space-x-1 md:space-x-2 text-xs md:text-sm">
                   <FileText className="w-3 h-3 md:w-4 md:h-4" />
-                  <span className="hidden sm:inline">文字内容</span>
-                  <span className="sm:hidden">文字</span>
+                  <span className="hidden sm:inline">原始文本</span>
+                  <span className="sm:hidden">文本</span>
+                </TabsTrigger>
+                <TabsTrigger value="preview" className="flex items-center space-x-1 md:space-x-2 text-xs md:text-sm">
+                  <Eye className="w-3 h-3 md:w-4 md:h-4" />
+                  <span className="hidden sm:inline">预览</span>
+                  <span className="sm:hidden">预览</span>
                 </TabsTrigger>
                 <TabsTrigger value="images" className="flex items-center space-x-1 md:space-x-2 text-xs md:text-sm">
                   <ImageIcon className="w-3 h-3 md:w-4 md:h-4" />
-                  <span className="hidden sm:inline">提取图片 ({images.length})</span>
+                  <span className="hidden sm:inline">图片 ({images.length})</span>
                   <span className="sm:hidden">图片 ({images.length})</span>
                 </TabsTrigger>
               </TabsList>
@@ -214,8 +254,16 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
                 <Textarea
                   value={result}
                   readOnly
-                  className="min-h-[300px] md:min-h-[400px] resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500 bg-white text-sm"
+                  className="min-h-[400px] md:min-h-[500px] w-full resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500 bg-white text-sm font-mono"
                   placeholder="识别结果将显示在这里..."
+                />
+              </TabsContent>
+              
+              <TabsContent value="preview" className="mt-4">
+                <MarkdownPreview 
+                  content={result} 
+                  images={images}
+                  className="min-h-[400px]"
                 />
               </TabsContent>
               
@@ -227,7 +275,7 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
                         <CardContent className="p-2 md:p-3">
                           <div className="relative group">
                             <img
-                              src={image.base64.startsWith('data:') ? image.base64 : `data:image/png;base64,${image.base64}`}
+                              src={image.isHostedUrl ? image.base64 : (image.base64.startsWith('data:') ? image.base64 : `data:image/png;base64,${image.base64}`)}
                               alt={`提取的图片 ${index + 1}`}
                               className="w-full h-24 md:h-32 object-cover rounded mb-2 cursor-pointer hover:opacity-90 transition-opacity"
                               onError={(e) => {
@@ -238,7 +286,8 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
                                 // 点击放大显示图片
                                 const newWindow = window.open();
                                 if (newWindow) {
-                                  newWindow.document.write(`<img src="${image.base64.startsWith('data:') ? image.base64 : `data:image/png;base64,${image.base64}`}" style="max-width:100%;height:auto;" />`);
+                                  const imgSrc = image.isHostedUrl ? image.base64 : (image.base64.startsWith('data:') ? image.base64 : `data:image/png;base64,${image.base64}`);
+                                  newWindow.document.write(`<img src="${imgSrc}" style="max-width:100%;height:auto;" />`);
                                 }
                               }}
                             />
