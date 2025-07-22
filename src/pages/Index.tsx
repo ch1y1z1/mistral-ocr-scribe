@@ -19,7 +19,7 @@ const Index = () => {
   const [inputUrl, setInputUrl] = useState<string>('');
   const [inputType, setInputType] = useState<'file' | 'url'>('file');
   const [ocrResult, setOcrResult] = useState<string>('');
-  const [extractedImages, setExtractedImages] = useState<Array<{id: string, base64: string, fileName: string}>>([]);
+  const [extractedImages, setExtractedImages] = useState<Array<{id: string, base64: string, fileName: string, isHostedUrl?: boolean}>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -109,7 +109,7 @@ const Index = () => {
     });
 
     try {
-      let documentSource: any = null;
+      let documentSource: { type: string; image_url?: string; document_url?: string } | null = null;
 
       if (inputType === 'url' && inputUrl) {
         // URL 处理
@@ -253,7 +253,7 @@ const Index = () => {
       console.log('响应解析耗时:', parseTime, 'ms');
       
       let extractedText = '';
-      let allImages: Array<{id: string, base64: string, fileName: string}> = [];
+      const allImages: Array<{id: string, base64: string, fileName: string, isHostedUrl?: boolean}> = [];
       
       // 根据官方文档结构提取文本和图片
       if (data && typeof data === 'object') {
@@ -268,7 +268,7 @@ const Index = () => {
           // 根据官方文档，每个页面包含 markdown 字段和 images 字段
           const markdownContents: string[] = [];
           
-          data.pages.forEach((page: any, index: number) => {
+          data.pages.forEach((page: { markdown?: string; text?: string; images?: Array<{ id?: string; image_url?: string; url?: string; image_base64?: string }> }, index: number) => {
             console.log(`页面 ${index + 1}:`, Object.keys(page));
             
             // 提取文本内容
@@ -286,8 +286,31 @@ const Index = () => {
             if (page.images && Array.isArray(page.images) && page.images.length > 0) {
               console.log(`页面 ${index + 1} 图片数量:`, page.images.length);
               
-              page.images.forEach((image: any, imgIndex: number) => {
-                if (image.image_base64 && typeof image.image_base64 === 'string') {
+              page.images.forEach((image: { id?: string; image_url?: string; url?: string; image_base64?: string }, imgIndex: number) => {
+                // 优先使用 Mistral 托管的在线地址，如果没有则使用 base64
+                let imageSource = '';
+                let useHostedUrl = false;
+                
+                // 检查是否有在线托管地址
+                if (image.image_url && typeof image.image_url === 'string') {
+                  imageSource = image.image_url;
+                  useHostedUrl = true;
+                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: 使用托管地址`);
+                } else if (image.url && typeof image.url === 'string') {
+                  imageSource = image.url;
+                  useHostedUrl = true;
+                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: 使用托管地址（url字段）`);
+                } else if (image.image_base64 && typeof image.image_base64 === 'string') {
+                  // 回退到 base64
+                  let imageBase64 = image.image_base64;
+                  if (!imageBase64.startsWith('data:')) {
+                    imageBase64 = `data:image/png;base64,${imageBase64}`;
+                  }
+                  imageSource = imageBase64;
+                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: 使用 base64 数据`);
+                }
+                
+                if (imageSource) {
                   // 使用 image.id 如果存在，否则生成简单的文件名
                   let fileName;
                   if (image.id && typeof image.id === 'string') {
@@ -298,21 +321,14 @@ const Index = () => {
                     fileName = `img-${imgIndex}.jpeg`;
                   }
                   
-                  // 检查图片数据格式并标准化
-                  let imageBase64 = image.image_base64;
-                  
-                  // 如果图片数据不是完整的 data URL，添加前缀
-                  if (!imageBase64.startsWith('data:')) {
-                    imageBase64 = `data:image/png;base64,${imageBase64}`;
-                  }
-                  
                   allImages.push({
                     id: image.id || `img-${imgIndex}`,
-                    base64: imageBase64,
-                    fileName: fileName
+                    base64: imageSource,
+                    fileName: fileName,
+                    isHostedUrl: useHostedUrl // 标记是否为托管地址
                   });
                   
-                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: ${fileName}`);
+                  console.log(`页面 ${index + 1} 图片 ${imgIndex + 1}: ${fileName} (${useHostedUrl ? '托管地址' : 'base64'})`);
                 }
               });
             } else {
