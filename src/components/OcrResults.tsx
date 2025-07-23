@@ -34,13 +34,14 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
   const handleEditToggle = () => {
     if (isEditing) {
       // 保存编辑
-      if (onResultChange) {
+      if (onResultChange && editableText !== result) {
         onResultChange(editableText);
+        toast({
+          title: "保存成功",
+          description: "文本修改已保存"
+        });
       }
-      toast({
-        title: "保存成功",
-        description: "文本修改已保存"
-      });
+      // 如果文本没有改变，不显示保存成功的提示
     }
     setIsEditing(!isEditing);
   };
@@ -316,7 +317,7 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
                         variant="outline"
                         size="sm"
                         className="flex items-center space-x-1 bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700 hover:text-blue-800"
-                        disabled={!result.trim()}
+                        disabled={!result || !result.trim()}
                       >
                         <Edit className="w-3 h-3" />
                         <span className="hidden sm:inline">编辑</span>
