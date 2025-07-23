@@ -191,7 +191,28 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
       </CardHeader>
       <CardContent className="p-4 max-h-[500px] overflow-y-auto">
         <div 
-          className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-blue-600 prose-strong:text-gray-900 prose-code:text-purple-600 prose-code:bg-purple-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-50 prose-pre:border prose-blockquote:border-l-4 prose-blockquote:border-blue-300 prose-blockquote:bg-blue-50/30 prose-table:text-sm prose-th:bg-gray-100 prose-img:rounded-lg prose-img:shadow-md"
+          className="prose prose-sm max-w-none 
+            prose-headings:text-gray-900 prose-headings:font-bold
+            prose-h1:text-2xl prose-h1:border-b prose-h1:border-gray-200 prose-h1:pb-2 prose-h1:mb-4
+            prose-h2:text-xl prose-h2:border-b prose-h2:border-gray-100 prose-h2:pb-1 prose-h2:mb-3
+            prose-h3:text-lg prose-h3:mb-2
+            prose-h4:text-base prose-h4:mb-2
+            prose-h5:text-sm prose-h5:mb-1
+            prose-h6:text-sm prose-h6:mb-1
+            prose-p:text-gray-700 prose-p:leading-relaxed prose-p:mb-4
+            prose-a:text-blue-600 prose-a:underline prose-a:decoration-blue-300 hover:prose-a:decoration-blue-500
+            prose-strong:text-gray-900 prose-strong:font-semibold
+            prose-em:text-gray-700 prose-em:italic
+            prose-code:text-purple-600 prose-code:bg-purple-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono
+            prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200 prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
+            prose-blockquote:border-l-4 prose-blockquote:border-blue-300 prose-blockquote:bg-blue-50/30 prose-blockquote:pl-4 prose-blockquote:py-2 prose-blockquote:italic
+            prose-ul:my-4 prose-ul:pl-6 prose-li:my-1 prose-li:marker:text-blue-500
+            prose-ol:my-4 prose-ol:pl-6 prose-ol:marker:text-blue-500 prose-ol:marker:font-semibold
+            prose-table:text-sm prose-table:border-collapse prose-table:w-full
+            prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold
+            prose-td:border prose-td:border-gray-200 prose-td:px-3 prose-td:py-2
+            prose-img:rounded-lg prose-img:shadow-md prose-img:max-w-full prose-img:h-auto
+            prose-hr:border-gray-300 prose-hr:my-6"
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       </CardContent>
