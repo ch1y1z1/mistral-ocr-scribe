@@ -1,9 +1,10 @@
-import { Copy, FileText, Download, Image as ImageIcon, Archive, Eye } from 'lucide-react';
+import { Copy, FileText, Download, Image as ImageIcon, Archive, Eye, Edit, Save, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import MarkdownPreview from '@/components/MarkdownPreview';
 
@@ -17,14 +18,49 @@ interface ExtractedImage {
 interface OcrResultsProps {
   result: string;
   images?: ExtractedImage[];
+  onResultChange?: (newResult: string) => void;
 }
 
-const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
+const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) => {
   const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editableText, setEditableText] = useState(result);
+
+  // 当result改变时同步更新editableText
+  useEffect(() => {
+    setEditableText(result);
+  }, [result]);
+
+  const handleEditToggle = () => {
+    if (isEditing) {
+      // 保存编辑
+      if (onResultChange && editableText !== result) {
+        onResultChange(editableText);
+        toast({
+          title: "保存成功",
+          description: "文本修改已保存"
+        });
+      }
+      // 如果文本没有改变，不显示保存成功的提示
+    }
+    setIsEditing(!isEditing);
+  };
+
+  const handleCancelEdit = () => {
+    setEditableText(result); // 恢复原始内容
+    setIsEditing(false);
+    toast({
+      title: "取消编辑",
+      description: "已恢复原始内容"
+    });
+  };
+
+  // 获取当前显示的文本（编辑模式下使用editableText，否则使用result）
+  const currentText = isEditing ? editableText : result;
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(result);
+      await navigator.clipboard.writeText(currentText);
       toast({
         title: "复制成功",
         description: "识别结果已复制到剪贴板"
@@ -39,7 +75,7 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
   };
 
   const downloadText = () => {
-    const blob = new Blob([result], { type: 'text/markdown' });
+    const blob = new Blob([currentText], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -60,7 +96,7 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
       const zip = new JSZip();
       
       // 添加文字文件（Markdown 格式）
-      zip.file('ocr-result.md', result);
+      zip.file('ocr-result.md', currentText);
       
       // 添加图片文件
       if (images.length > 0) {
@@ -251,17 +287,59 @@ const OcrResults = ({ result, images = [] }: OcrResultsProps) => {
               </TabsList>
               
               <TabsContent value="text" className="mt-4">
-                <Textarea
-                  value={result}
-                  readOnly
-                  className="min-h-[400px] md:min-h-[500px] w-full resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500 bg-white text-sm font-mono"
-                  placeholder="识别结果将显示在这里..."
-                />
+                <div className="relative">
+                  {/* 编辑按钮区域 */}
+                  <div className="absolute top-2 right-2 z-10 flex gap-2">
+                    {isEditing ? (
+                      <>
+                        <Button
+                          onClick={handleEditToggle}
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center space-x-1 bg-green-50 hover:bg-green-100 border-green-300 text-green-700 hover:text-green-800"
+                        >
+                          <Save className="w-3 h-3" />
+                          <span className="hidden sm:inline">保存</span>
+                        </Button>
+                        <Button
+                          onClick={handleCancelEdit}
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center space-x-1 bg-gray-50 hover:bg-gray-100 border-gray-300 text-gray-700 hover:text-gray-800"
+                        >
+                          <X className="w-3 h-3" />
+                          <span className="hidden sm:inline">取消</span>
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        onClick={handleEditToggle}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center space-x-1 bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700 hover:text-blue-800"
+                        disabled={!result || !result.trim()}
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span className="hidden sm:inline">编辑</span>
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <Textarea
+                    value={isEditing ? editableText : result}
+                    onChange={(e) => isEditing && setEditableText(e.target.value)}
+                    readOnly={!isEditing}
+                    className={`min-h-[400px] md:min-h-[500px] w-full resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm font-mono pr-20 ${
+                      isEditing ? 'bg-white' : 'bg-gray-50'
+                    }`}
+                    placeholder="识别结果将显示在这里..."
+                  />
+                </div>
               </TabsContent>
               
               <TabsContent value="preview" className="mt-4">
                 <MarkdownPreview 
-                  content={result} 
+                  content={currentText} 
                   images={images}
                   className="min-h-[400px]"
                 />
