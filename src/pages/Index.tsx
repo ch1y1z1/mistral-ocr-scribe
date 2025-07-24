@@ -523,6 +523,7 @@ const Index = () => {
           {/* Right Column - OCR Results */}
           <div className="xl:col-span-3 lg:col-span-2">
             <OcrResults 
+              key={ocrResult ? ocrResult.slice(0, 100) + ocrResult.length : 'empty'}
               result={ocrResult} 
               images={extractedImages} 
               onResultChange={setOcrResult}
