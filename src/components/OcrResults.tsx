@@ -26,9 +26,10 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
   const [isEditing, setIsEditing] = useState(false);
   const [editableText, setEditableText] = useState(result);
 
-  // 当result改变时同步更新editableText
+  // 当result改变时同步更新editableText并重置编辑状态
   useEffect(() => {
     setEditableText(result);
+    setIsEditing(false); // 重置为只读模式
   }, [result]);
 
   const handleEditToggle = () => {
