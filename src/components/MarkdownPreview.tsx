@@ -2,6 +2,8 @@ import { marked } from 'marked';
 import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye } from 'lucide-react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 interface ExtractedImage {
   id: string;
@@ -15,6 +17,41 @@ interface MarkdownPreviewProps {
   images?: ExtractedImage[];
   className?: string;
 }
+
+// 处理数学公式的函数
+const processMathFormulas = (content: string): string => {
+  // 处理行内数学公式 $...$
+  content = content.replace(/\$([^$]+)\$/g, (match, formula) => {
+    try {
+      const rendered = katex.renderToString(formula, {
+        displayMode: false,
+        throwOnError: false,
+        trust: false
+      });
+      return rendered;
+    } catch (error) {
+      console.warn('行内公式渲染失败:', formula, error);
+      return match; // 如果渲染失败，保持原样
+    }
+  });
+
+  // 处理块级数学公式 $$...$$
+  content = content.replace(/\$\$([^$]+)\$\$/g, (match, formula) => {
+    try {
+      const rendered = katex.renderToString(formula, {
+        displayMode: true,
+        throwOnError: false,
+        trust: false
+      });
+      return `<div class="math-display">${rendered}</div>`;
+    } catch (error) {
+      console.warn('块级公式渲染失败:', formula, error);
+      return match; // 如果渲染失败，保持原样
+    }
+  });
+
+  return content;
+};
 
 const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPreviewProps) => {
   const [renderedHtml, setRenderedHtml] = useState<string>('');
@@ -83,8 +120,8 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
           mangle: false
         });
 
-        // 替换 markdown 中的图片引用
-        let processedContent = content;
+        // 先处理数学公式，再处理图片引用
+        let processedContent = processMathFormulas(content);
         
         console.log('开始处理图片引用，可用映射:', Array.from(imageMap.keys()));
         
@@ -212,7 +249,9 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
             prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold
             prose-td:border prose-td:border-gray-200 prose-td:px-3 prose-td:py-2
             prose-img:rounded-lg prose-img:shadow-md prose-img:max-w-full prose-img:h-auto
-            prose-hr:border-gray-300 prose-hr:my-6"
+            prose-hr:border-gray-300 prose-hr:my-6
+            [&_.katex]:text-gray-900 [&_.katex-display]:my-4 [&_.katex-display]:text-center
+            [&_.math-display]:my-4 [&_.math-display]:overflow-x-auto"
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       </CardContent>
