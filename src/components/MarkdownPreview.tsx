@@ -20,25 +20,16 @@ interface MarkdownPreviewProps {
 
 // 处理数学公式的函数
 const processMathFormulas = (content: string): string => {
-  // 处理行内数学公式 $...$
-  content = content.replace(/\$([^$]+)\$/g, (match, formula) => {
+  // 先处理块级数学公式 $$...$$（包括跨行）
+  content = content.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, formula) => {
     try {
-      const rendered = katex.renderToString(formula, {
-        displayMode: false,
-        throwOnError: false,
-        trust: false
-      });
-      return rendered;
-    } catch (error) {
-      console.warn('行内公式渲染失败:', formula, error);
-      return match; // 如果渲染失败，保持原样
-    }
-  });
-
-  // 处理块级数学公式 $$...$$
-  content = content.replace(/\$\$([^$]+)\$\$/g, (match, formula) => {
-    try {
-      const rendered = katex.renderToString(formula, {
+      // 清理公式中的多余空白
+      const cleanFormula = formula.trim();
+      if (!cleanFormula) {
+        return match; // 如果公式为空，保持原样
+      }
+      
+      const rendered = katex.renderToString(cleanFormula, {
         displayMode: true,
         throwOnError: false,
         trust: false
@@ -46,6 +37,26 @@ const processMathFormulas = (content: string): string => {
       return `<div class="math-display">${rendered}</div>`;
     } catch (error) {
       console.warn('块级公式渲染失败:', formula, error);
+      return match; // 如果渲染失败，保持原样
+    }
+  });
+
+  // 再处理行内数学公式 $...$（避免跨行匹配）
+  content = content.replace(/\$([^$\n\r]+)\$/g, (match, formula) => {
+    try {
+      const cleanFormula = formula.trim();
+      if (!cleanFormula) {
+        return match; // 如果公式为空，保持原样
+      }
+      
+      const rendered = katex.renderToString(cleanFormula, {
+        displayMode: false,
+        throwOnError: false,
+        trust: false
+      });
+      return rendered;
+    } catch (error) {
+      console.warn('行内公式渲染失败:', formula, error);
       return match; // 如果渲染失败，保持原样
     }
   });
