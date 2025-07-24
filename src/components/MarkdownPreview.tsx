@@ -29,6 +29,9 @@ const processMathFormulas = (content: string): string => {
         return match; // 如果公式为空，保持原样
       }
       
+      // NOTE: The following line injects HTML rendered by KaTeX.
+      // KaTeX's current configuration (`trust: false`) and its default behavior are relied upon to prevent XSS.
+      // If KaTeX settings or version are changed, review this code for XSS safety.
       const rendered = katex.renderToString(cleanFormula, {
         displayMode: true,
         throwOnError: false,
@@ -49,6 +52,9 @@ const processMathFormulas = (content: string): string => {
         return match; // 如果公式为空，保持原样
       }
       
+      // NOTE: The following line injects HTML rendered by KaTeX.
+      // KaTeX's current configuration (`trust: false`) and its default behavior are relied upon to prevent XSS.
+      // If KaTeX settings or version are changed, review this code for XSS safety.
       const rendered = katex.renderToString(cleanFormula, {
         displayMode: false,
         throwOnError: false,
