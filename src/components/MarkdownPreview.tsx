@@ -2,6 +2,8 @@ import { marked } from 'marked';
 import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye } from 'lucide-react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 interface ExtractedImage {
   id: string;
@@ -15,6 +17,58 @@ interface MarkdownPreviewProps {
   images?: ExtractedImage[];
   className?: string;
 }
+
+// 处理数学公式的函数
+const processMathFormulas = (content: string): string => {
+  // 先处理块级数学公式 $$...$$（包括跨行）
+  content = content.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, formula) => {
+    try {
+      // 清理公式中的多余空白
+      const cleanFormula = formula.trim();
+      if (!cleanFormula) {
+        return match; // 如果公式为空，保持原样
+      }
+      
+      // NOTE: The following line injects HTML rendered by KaTeX.
+      // KaTeX's current configuration (`trust: false`) and its default behavior are relied upon to prevent XSS.
+      // If KaTeX settings or version are changed, review this code for XSS safety.
+      const rendered = katex.renderToString(cleanFormula, {
+        displayMode: true,
+        throwOnError: false,
+        trust: false
+      });
+      return `<div class="math-display">${rendered}</div>`;
+    } catch (error) {
+      console.warn('块级公式渲染失败:', formula, error);
+      return match; // 如果渲染失败，保持原样
+    }
+  });
+
+  // 再处理行内数学公式 $...$（避免跨行匹配）
+  content = content.replace(/\$([^$\n\r]+)\$/g, (match, formula) => {
+    try {
+      const cleanFormula = formula.trim();
+      if (!cleanFormula) {
+        return match; // 如果公式为空，保持原样
+      }
+      
+      // NOTE: The following line injects HTML rendered by KaTeX.
+      // KaTeX's current configuration (`trust: false`) and its default behavior are relied upon to prevent XSS.
+      // If KaTeX settings or version are changed, review this code for XSS safety.
+      const rendered = katex.renderToString(cleanFormula, {
+        displayMode: false,
+        throwOnError: false,
+        trust: false
+      });
+      return rendered;
+    } catch (error) {
+      console.warn('行内公式渲染失败:', formula, error);
+      return match; // 如果渲染失败，保持原样
+    }
+  });
+
+  return content;
+};
 
 const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPreviewProps) => {
   const [renderedHtml, setRenderedHtml] = useState<string>('');
@@ -83,8 +137,8 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
           mangle: false
         });
 
-        // 替换 markdown 中的图片引用
-        let processedContent = content;
+        // 先处理数学公式，再处理图片引用
+        let processedContent = processMathFormulas(content);
         
         console.log('开始处理图片引用，可用映射:', Array.from(imageMap.keys()));
         
@@ -212,7 +266,9 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
             prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold
             prose-td:border prose-td:border-gray-200 prose-td:px-3 prose-td:py-2
             prose-img:rounded-lg prose-img:shadow-md prose-img:max-w-full prose-img:h-auto
-            prose-hr:border-gray-300 prose-hr:my-6"
+            prose-hr:border-gray-300 prose-hr:my-6
+            [&_.katex]:text-gray-900 [&_.katex-display]:my-4 [&_.katex-display]:text-center
+            [&_.math-display]:my-4 [&_.math-display]:overflow-x-auto"
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       </CardContent>
