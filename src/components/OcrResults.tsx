@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
 import MarkdownPreview from '@/components/MarkdownPreview';
 
@@ -25,11 +25,11 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editableText, setEditableText] = useState(result);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 当result改变时同步更新editableText并重置编辑状态
+  // 当result改变时同步更新editableText
   useEffect(() => {
     setEditableText(result);
-    setIsEditing(false); // 重置为只读模式
   }, [result]);
 
   const handleEditToggle = () => {
@@ -42,7 +42,10 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
           description: "文本修改已保存"
         });
       }
-      // 如果文本没有改变，不显示保存成功的提示
+      // 退出编辑模式时失去焦点
+      if (textareaRef.current) {
+        textareaRef.current.blur();
+      }
     }
     setIsEditing(!isEditing);
   };
@@ -50,6 +53,10 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
   const handleCancelEdit = () => {
     setEditableText(result); // 恢复原始内容
     setIsEditing(false);
+    // 取消编辑时失去焦点
+    if (textareaRef.current) {
+      textareaRef.current.blur();
+    }
     toast({
       title: "取消编辑",
       description: "已恢复原始内容"
@@ -327,6 +334,7 @@ const OcrResults = ({ result, images = [], onResultChange }: OcrResultsProps) =>
                   </div>
                   
                   <Textarea
+                    ref={textareaRef}
                     value={isEditing ? editableText : result}
                     onChange={(e) => isEditing && setEditableText(e.target.value)}
                     readOnly={!isEditing}
