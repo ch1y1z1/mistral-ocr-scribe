@@ -6,12 +6,22 @@ import { useToast } from '@/hooks/use-toast';
 import { useFileValidation } from '@/hooks/useFileValidation';
 import { useClipboardPaste } from '@/hooks/useClipboardPaste';
 import {
-  LazyDndContext,
-  LazySortableContext,
-  useLazySortable,
-  LazyArrayMove,
-  DndLoadingSpinner,
-} from '@/lib/lazyImports';
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import ImagePreviewModal from './ImagePreviewModal';
 
 interface SingleFileDisplayProps {
@@ -98,9 +108,16 @@ const SortableFileItem = ({ file, index, id, onRemove, onPreview }: SortableFile
     attributes,
     listeners,
     setNodeRef,
-    style,
+    transform,
+    transition,
     isDragging,
-  } = useLazySortable({ id });
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   const [imageUrl, setImageUrl] = useState<string>('');
 
@@ -215,10 +232,12 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
   };
 
   // 拖拽传感器
-  const sensors = [
-    { type: 'pointer' },
-    { type: 'keyboard', options: { coordinateGetter: 'sortable' } }
-  ];
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -311,7 +330,7 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
   };
 
   // 处理拖拽排序
-  const handleDragEnd = (event: any) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (active.id !== over?.id && Array.isArray(selectedFile)) {
@@ -319,7 +338,7 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
       const newIndex = selectedFile.findIndex((file, index) => generateFileId(file, index) === over?.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
-        const newFiles = LazyArrayMove(selectedFile, oldIndex, newIndex);
+        const newFiles = arrayMove(selectedFile, oldIndex, newIndex);
         onFileSelect(newFiles);
       }
     }
@@ -422,14 +441,14 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
             </Button>
           </div>
           
-          <LazyDndContext
+          <DndContext
             sensors={sensors}
-            collisionDetection="closestCenter"
+            collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <LazySortableContext
+            <SortableContext
               items={selectedFile.map((file, index) => generateFileId(file, index))}
-              strategy="vertical"
+              strategy={verticalListSortingStrategy}
             >
               <div className="max-h-48 overflow-y-auto space-y-2">
                 {selectedFile.map((file, index) => (
@@ -443,8 +462,8 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
                   />
                 ))}
               </div>
-            </LazySortableContext>
-          </LazyDndContext>
+            </SortableContext>
+          </DndContext>
           
           {/* 预览模态框 */}
           <ImagePreviewModal

@@ -20,9 +20,15 @@ export const PdfLoadingSpinner = () => (
 export const LazyDndContext = lazy(() => import('@dnd-kit/core').then(mod => ({ default: mod.DndContext })));
 export const LazySortableContext = lazy(() => import('@dnd-kit/sortable').then(mod => ({ default: mod.SortableContext })));
 
-// 简单的排序钩子
-export const useLazySortable = (props: any) => {
-  const [sortableProps, setSortableProps] = useState<any>({
+// 拖拽排序钩子 - 使用动态导入
+export const useLazySortable = (props: { id: string }) => {
+  const [sortableProps, setSortableProps] = useState<{
+    attributes: Record<string, unknown>;
+    listeners: Record<string, unknown>;
+    setNodeRef: (element: HTMLElement | null) => void;
+    style: React.CSSProperties;
+    isDragging: boolean;
+  }>({
     attributes: {},
     listeners: {},
     setNodeRef: () => {},
@@ -40,13 +46,13 @@ export const useLazySortable = (props: any) => {
       };
       setSortableProps({ attributes, listeners, setNodeRef, style, isDragging });
     });
-  }, [props]);
+  }, [props.id]);
 
   return sortableProps;
 };
 
 // 简单的数组移动函数
-export const LazyArrayMove = (array: any[], oldIndex: number, newIndex: number) => {
+export const LazyArrayMove = <T,>(array: T[], oldIndex: number, newIndex: number): T[] => {
   const newArray = [...array];
   const [removed] = newArray.splice(oldIndex, 1);
   newArray.splice(newIndex, 0, removed);
