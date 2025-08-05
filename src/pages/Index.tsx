@@ -12,7 +12,7 @@ import FileUpload from '@/components/FileUpload';
 import UrlInput from '@/components/UrlInput';
 import ApiKeyManager from '@/components/ApiKeyManager';
 import OcrResults from '@/components/OcrResults';
-import { createPdfFromImages } from '@/lib/pdfUtils';
+import { createPdfFromImages } from '@/lib/lazyImports';
 
 const Index = () => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('mistral-api-key') || '');
@@ -24,7 +24,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleFileSelect = (file: File | File[]) => {
+  const handleFileSelect = (file: File | File[] | null) => {
     setSelectedFile(file);
     setOcrResult('');
     setExtractedImages([]);

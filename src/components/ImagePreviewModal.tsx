@@ -17,14 +17,26 @@ const ImagePreviewModal = ({ isOpen, onClose, images, initialIndex }: ImagePrevi
   // 生成图片URL
   useEffect(() => {
     if (images.length > 0) {
-      const urls = images.map(file => URL.createObjectURL(file));
-      setImageUrls(urls);
-      
-      // 清理函数
-      return () => {
-        urls.forEach(url => URL.revokeObjectURL(url));
-      };
+      // 清理之前的URL
+      setImageUrls(prevUrls => {
+        prevUrls.forEach(url => URL.revokeObjectURL(url));
+        return images.map(file => URL.createObjectURL(file));
+      });
+    } else {
+      // 如果没有图片，清理所有URL
+      setImageUrls(prevUrls => {
+        prevUrls.forEach(url => URL.revokeObjectURL(url));
+        return [];
+      });
     }
+    
+    // 组件卸载时的清理
+    return () => {
+      setImageUrls(prevUrls => {
+        prevUrls.forEach(url => URL.revokeObjectURL(url));
+        return [];
+      });
+    };
   }, [images]);
 
   // 更新当前索引
