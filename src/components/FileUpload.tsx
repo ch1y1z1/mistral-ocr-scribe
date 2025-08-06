@@ -1,5 +1,5 @@
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Upload, FileText, Image as ImageIcon, X, Clipboard, Eye, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -31,15 +31,22 @@ interface SingleFileDisplayProps {
 }
 
 const SingleFileDisplay = ({ file, onRemove, onPreview }: SingleFileDisplayProps) => {
-  const [imageUrl, setImageUrl] = useState<string>('');
-
-  useEffect(() => {
+  // 生成图片URL - 使用useMemo优化性能
+  const imageUrl = useMemo(() => {
     if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setImageUrl(url);
-      return () => URL.revokeObjectURL(url);
+      return URL.createObjectURL(file);
     }
+    return '';
   }, [file]);
+  
+  // 组件卸载时清理URL
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, [imageUrl]);
 
   return (
     <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 rounded-lg">
@@ -119,15 +126,22 @@ const SortableFileItem = ({ file, index, id, onRemove, onPreview }: SortableFile
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const [imageUrl, setImageUrl] = useState<string>('');
-
-  useEffect(() => {
+  // 生成图片URL - 使用useMemo优化性能
+  const imageUrl = useMemo(() => {
     if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setImageUrl(url);
-      return () => URL.revokeObjectURL(url);
+      return URL.createObjectURL(file);
     }
+    return '';
   }, [file]);
+  
+  // 组件卸载时清理URL
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, [imageUrl]);
 
   return (
     <div
@@ -219,17 +233,22 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
     selectedFile
   });
   
-  // 为文件生成唯一 ID 的映射
-  const [fileIds, setFileIds] = useState<Record<string, string>>({});
+  // 生成唯一 ID - 使用useMemo优化性能
+  const fileIds = useMemo(() => {
+    if (!selectedFile) return new Map();
+    
+    const files = Array.isArray(selectedFile) ? selectedFile : [selectedFile];
+    return new Map(files.map((file, index) => [
+      `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    ]));
+  }, [selectedFile]);
   
-  // 生成唯一 ID
-  const generateFileId = (file: File, index: number): string => {
+  // 生成唯一 ID 的函数
+  const generateFileId = useCallback((file: File, index: number): string => {
     const key = `${file.name}-${file.size}-${file.lastModified}-${index}`;
-    if (!fileIds[key]) {
-      setFileIds(prev => ({ ...prev, [key]: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }));
-    }
-    return fileIds[key];
-  };
+    return fileIds.get(key) || `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }, [fileIds]);
 
   // 拖拽传感器
   const sensors = useSensors(
@@ -261,10 +280,10 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
     }
   };
 
-  const handleFileSelection = (file: File) => {
+  const handleFileSelection = async (file: File) => {
     if (!file) return;
 
-    if (validateSingleFile(file)) {
+    if (await validateSingleFile(file)) {
       onFileSelect(file);
       toast({
         title: "文件上传成功",
@@ -273,10 +292,10 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
     }
   };
 
-  const handleMultipleFileSelection = (files: File[]) => {
+  const handleMultipleFileSelection = async (files: File[]) => {
     if (!files.length) return;
 
-    const { validFiles, invalidFiles, oversizedFiles } = validateMultipleFiles(files);
+    const { validFiles, invalidFiles, oversizedFiles, extensionMismatchFiles, contentValidationFailedFiles } = await validateMultipleFiles(files);
 
     if (validFiles.length === 0) {
       toast({
@@ -294,15 +313,15 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
     });
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
       if (files.length > 1) {
-        handleMultipleFileSelection(Array.from(files));
+        await handleMultipleFileSelection(Array.from(files));
       } else {
         const file = files[0];
         if (file) {
-          handleFileSelection(file);
+          await handleFileSelection(file);
         }
       }
     }

@@ -1,6 +1,18 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
+// 请求剪切板权限的辅助函数
+const requestClipboardPermission = async (): Promise<boolean> => {
+  try {
+    // 尝试通过用户交互请求权限
+    // 注意：这通常需要用户手势触发
+    return false; // 在实际应用中，可以通过 UI 交互请求权限
+  } catch (error) {
+    console.warn('Failed to request clipboard permission:', error);
+    return false;
+  }
+};
+
 interface UseClipboardPasteProps {
   onFilesReceived: (files: File[]) => void;
   selectedFile: File | File[] | null;
@@ -16,6 +28,31 @@ export const useClipboardPaste = ({ onFilesReceived, selectedFile }: UseClipboar
         toast({
           title: "剪切板访问失败",
           description: "您的浏览器不支持剪切板访问功能",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // 检查剪切板权限
+      let permissionGranted = false;
+      try {
+        const permission = await navigator.permissions.query({ name: 'clipboard-read' as PermissionName });
+        if (permission.state === 'granted') {
+          permissionGranted = true;
+        } else if (permission.state === 'prompt') {
+          // 尝试请求权限
+          permissionGranted = await requestClipboardPermission();
+        }
+      } catch (permissionError) {
+        // 如果权限 API 不可用，尝试直接读取
+        console.warn('Clipboard permission API not available, trying direct access');
+        permissionGranted = true; // 允许尝试直接读取
+      }
+
+      if (!permissionGranted) {
+        toast({
+          title: "剪切板访问权限被拒绝",
+          description: "请在浏览器设置中允许剪切板访问权限",
           variant: "destructive"
         });
         return;

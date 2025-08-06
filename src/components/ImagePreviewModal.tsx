@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 interface ImagePreviewModalProps {
   isOpen: boolean;
@@ -12,32 +12,28 @@ interface ImagePreviewModalProps {
 
 const ImagePreviewModal = ({ isOpen, onClose, images, initialIndex }: ImagePreviewModalProps) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-
-  // 生成图片URL
-  useEffect(() => {
-    if (images.length > 0) {
-      // 清理之前的URL
-      setImageUrls(prevUrls => {
-        prevUrls.forEach(url => URL.revokeObjectURL(url));
-        return images.map(file => URL.createObjectURL(file));
-      });
-    } else {
-      // 如果没有图片，清理所有URL
-      setImageUrls(prevUrls => {
-        prevUrls.forEach(url => URL.revokeObjectURL(url));
-        return [];
-      });
-    }
+  
+  // 保存之前的URL引用用于清理
+  const prevImageUrlsRef = useRef<string[]>([]);
+  
+  // 生成图片URL - 使用useMemo优化性能
+  const imageUrls = useMemo(() => {
+    // 清理之前的URL
+    prevImageUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
     
-    // 组件卸载时的清理
-    return () => {
-      setImageUrls(prevUrls => {
-        prevUrls.forEach(url => URL.revokeObjectURL(url));
-        return [];
-      });
-    };
+    const newUrls = images.map(file => URL.createObjectURL(file));
+    prevImageUrlsRef.current = newUrls;
+    
+    return newUrls;
   }, [images]);
+  
+  // 组件卸载时的清理
+  useEffect(() => {
+    return () => {
+      prevImageUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      prevImageUrlsRef.current = [];
+    };
+  }, []);
 
   // 更新当前索引
   useEffect(() => {

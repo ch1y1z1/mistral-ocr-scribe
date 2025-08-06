@@ -82,33 +82,38 @@ export const createPdfFromImages = async (imageFiles: File[]): Promise<File> => 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
+      const objectUrl = URL.createObjectURL(imageFile);
       
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = URL.createObjectURL(imageFile);
-      });
-      
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx?.drawImage(img, 0, 0);
-      
-      // 转换为PNG格式的blob
-      const pngBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Failed to convert image to PNG blob'));
-          }
-        }, 'image/png');
-      });
-      
-      const pngArrayBuffer = await pngBlob.arrayBuffer();
-      image = await pdfDoc.embedPng(pngArrayBuffer);
-      
-      // 清理对象URL
-      URL.revokeObjectURL(img.src);
+      try {
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx?.drawImage(img, 0, 0);
+        
+        // 转换为PNG格式的blob
+        const pngBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Failed to convert image to PNG blob'));
+            }
+          }, 'image/png');
+        });
+        
+        const pngArrayBuffer = await pngBlob.arrayBuffer();
+        image = await pdfDoc.embedPng(pngArrayBuffer);
+      } catch (error) {
+        throw new Error(`Failed to convert image: ${error}`);
+      } finally {
+        // 确保清理对象URL
+        URL.revokeObjectURL(objectUrl);
+      }
     }
     
     // 获取图片尺寸
