@@ -1,7 +1,7 @@
 
 
 import { useState, useRef } from 'react';
-import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff, Link } from 'lucide-react';
+import { Upload, FileText, Image as ImageIcon, Copy, Settings, Eye, EyeOff, Link, Images } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,10 +12,11 @@ import FileUpload from '@/components/FileUpload';
 import UrlInput from '@/components/UrlInput';
 import ApiKeyManager from '@/components/ApiKeyManager';
 import OcrResults from '@/components/OcrResults';
+import { createPdfFromImages } from '@/lib/lazyImports';
 
 const Index = () => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('mistral-api-key') || '');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | File[] | null>(null);
   const [inputUrl, setInputUrl] = useState<string>('');
   const [inputType, setInputType] = useState<'file' | 'url'>('file');
   const [ocrResult, setOcrResult] = useState<string>('');
@@ -23,17 +24,23 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = (file: File | File[] | null) => {
     setSelectedFile(file);
     setOcrResult('');
     setExtractedImages([]);
-    setInputType('file');
     
     if (file) {
-      toast({
-        title: "文件选择成功",
-        description: `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
-      });
+      if (Array.isArray(file)) {
+        toast({
+          title: "文件选择成功",
+          description: `已选择 ${file.length} 个图片文件`
+        });
+      } else {
+        toast({
+          title: "文件选择成功",
+          description: `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
+        });
+      }
     }
   };
 
@@ -137,52 +144,77 @@ const Index = () => {
           console.log('识别为文档 URL:', documentSource);
         }
       } else if (inputType === 'file' && selectedFile) {
-        // 文件处理 - 统一使用 base64 方式
-        const startConversion = Date.now();
-        
-        if (selectedFile.type === 'application/pdf') {
-          // PDF 文件处理 - 转换为 base64
+        // 检查是否为多文件
+        if (Array.isArray(selectedFile)) {
+          // 多图片处理 - 合并为PDF
           toast({
-            title: "PDF 转换",
-            description: "正在将 PDF 转换为 Base64 格式..."
+            title: "合并图片",
+            description: `正在将 ${selectedFile.length} 张图片合并为PDF...`
           });
 
-          const base64 = await convertPdfToBase64(selectedFile);
+          const pdfFile = await createPdfFromImages(selectedFile);
+          
+          toast({
+            title: "PDF生成完成",
+            description: "正在将PDF转换为Base64格式..."
+          });
+
+          const base64 = await convertPdfToBase64(pdfFile);
           
           documentSource = {
             type: "document_url",
             document_url: `data:application/pdf;base64,${base64}`
           };
           
-          console.log('PDF 文档源（base64）:', documentSource.type);
+          console.log('多图片合并PDF处理完成');
         } else {
-          // 图片文件处理
-          toast({
-            title: "图片转换",
-            description: "正在将图片转换为 Base64 格式..."
-          });
-
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              resolve(result.split(',')[1]);
-            };
-            reader.readAsDataURL(selectedFile);
-          });
-
-          const conversionTime = Date.now() - startConversion;
-          console.log(`图片转换耗时: ${conversionTime}ms`);
+          // 单文件处理 - 统一使用 base64 方式
+          const startConversion = Date.now();
           
-          toast({
-            title: "图片转换完成",
-            description: `Base64 转换耗时: ${conversionTime}ms`
-          });
+          if (selectedFile.type === 'application/pdf') {
+            // PDF 文件处理 - 转换为 base64
+            toast({
+              title: "PDF 转换",
+              description: "正在将 PDF 转换为 Base64 格式..."
+            });
 
-          documentSource = {
-            type: "image_url",
-            image_url: `data:${selectedFile.type};base64,${base64}`
-          };
+            const base64 = await convertPdfToBase64(selectedFile);
+            
+            documentSource = {
+              type: "document_url",
+              document_url: `data:application/pdf;base64,${base64}`
+            };
+            
+            console.log('PDF 文档源（base64）:', documentSource.type);
+          } else {
+            // 图片文件处理
+            toast({
+              title: "图片转换",
+              description: "正在将图片转换为 Base64 格式..."
+            });
+
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const result = reader.result as string;
+                resolve(result.split(',')[1]);
+              };
+              reader.readAsDataURL(selectedFile);
+            });
+
+            const conversionTime = Date.now() - startConversion;
+            console.log(`图片转换耗时: ${conversionTime}ms`);
+            
+            toast({
+              title: "图片转换完成",
+              description: `Base64 转换耗时: ${conversionTime}ms`
+            });
+
+            documentSource = {
+              type: "image_url",
+              image_url: `data:${selectedFile.type};base64,${base64}`
+            };
+          }
         }
       }
 
@@ -511,8 +543,8 @@ const Index = () => {
                     '请选择文件或输入 URL'
                   ) : (
                     <div className="flex items-center space-x-2">
-                      <FileText className="w-4 h-4" />
-                      <span>开始识别文字</span>
+                      {Array.isArray(selectedFile) ? <Images className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                      <span>{Array.isArray(selectedFile) ? '开始识别多图片' : '开始识别文字'}</span>
                     </div>
                   )}
                 </Button>
