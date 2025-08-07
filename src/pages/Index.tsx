@@ -221,8 +221,10 @@ const Index = () => {
       console.log('准备发送 OCR API 请求...');
       console.log('输入类型:', inputType);
       if (inputType === 'file') {
-        console.log('文件类型:', selectedFile?.type);
-        console.log('文件大小:', selectedFile?.size, 'bytes');
+        const fileInfo = Array.isArray(selectedFile) 
+          ? `${selectedFile.length} files` 
+          : selectedFile ? `${selectedFile.type} (${selectedFile.size} bytes)` : 'none';
+        console.log('文件信息:', fileInfo);
       } else {
         console.log('URL:', inputUrl);
       }

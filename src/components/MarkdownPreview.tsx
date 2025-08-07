@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye } from 'lucide-react';
 import katex from 'katex';
+import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
 
 interface ExtractedImage {
@@ -132,9 +133,7 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
         // 配置 marked 选项
         marked.setOptions({
           gfm: true,
-          breaks: true,
-          headerIds: false,
-          mangle: false
+          breaks: true
         });
 
         // 先处理数学公式，再处理图片引用
@@ -182,7 +181,19 @@ const MarkdownPreview = ({ content, images = [], className = '' }: MarkdownPrevi
 
         // 渲染 markdown
         const html = await marked.parse(processedContent);
-        setRenderedHtml(html);
+        
+        // 使用 DOMPurify 清理 HTML 以防止 XSS 攻击
+        const cleanHtml = DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                        'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 
+                        'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'div', 'span'],
+          ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id'],
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mn', 'mo', 'mspace', 'mtext', 'mfrac', 'msup', 'msub'],
+          ADD_ATTR: ['xmlns', 'mathvariant', 'mathsize', 'mathcolor', 'mathbackground']
+        });
+        
+        setRenderedHtml(cleanHtml);
       } catch (error) {
         console.error('Markdown 渲染失败:', error);
         setRenderedHtml('<p>Markdown 渲染失败</p>');

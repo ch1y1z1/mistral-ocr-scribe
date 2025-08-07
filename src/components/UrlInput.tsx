@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
-import { Link, ExternalLink } from 'lucide-react';
+import { Link, ExternalLink, AlertTriangle } from 'lucide-react';
+import { validateUrl } from '@/lib/security';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -12,10 +13,27 @@ interface UrlInputProps {
 
 const UrlInput = ({ onUrlInput, inputUrl }: UrlInputProps) => {
   const [tempUrl, setTempUrl] = useState(inputUrl);
+  const [validationError, setValidationError] = useState<string>('');
 
   const handleSubmit = () => {
-    if (tempUrl.trim()) {
-      onUrlInput(tempUrl.trim());
+    const trimmedUrl = tempUrl.trim();
+    if (!trimmedUrl) return;
+
+    // 验证URL安全性
+    const validation = validateUrl(trimmedUrl);
+    if (!validation.isValid) {
+      setValidationError(validation.error || 'Invalid URL');
+      return;
+    }
+
+    setValidationError('');
+    onUrlInput(trimmedUrl);
+  };
+
+  const handleUrlChange = (value: string) => {
+    setTempUrl(value);
+    if (validationError) {
+      setValidationError(''); // 清除错误当用户开始输入
     }
   };
 
@@ -51,9 +69,11 @@ const UrlInput = ({ onUrlInput, inputUrl }: UrlInputProps) => {
               type="url"
               placeholder="https://example.com/document.pdf 或 image.jpg"
               value={tempUrl}
-              onChange={(e) => setTempUrl(e.target.value)}
+              onChange={(e) => handleUrlChange(e.target.value)}
               onKeyPress={handleKeyPress}
-              className="flex-1 text-sm"
+              className={`flex-1 text-sm ${
+                validationError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''
+              }`}
             />
             <Button 
               onClick={handleSubmit}
@@ -64,6 +84,12 @@ const UrlInput = ({ onUrlInput, inputUrl }: UrlInputProps) => {
               <Link className="w-4 h-4" />
             </Button>
           </div>
+          {validationError && (
+            <div className="flex items-center space-x-2 mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <span className="text-sm text-red-700">{validationError}</span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 rounded-lg">
@@ -102,8 +128,14 @@ const UrlInput = ({ onUrlInput, inputUrl }: UrlInputProps) => {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setTempUrl(example.url);
-                    onUrlInput(example.url);
+                    const validation = validateUrl(example.url);
+                    if (validation.isValid) {
+                      setTempUrl(example.url);
+                      onUrlInput(example.url);
+                      setValidationError('');
+                    } else {
+                      setValidationError(validation.error || 'Invalid URL');
+                    }
                   }}
                   className="justify-start text-left p-2 md:p-3 h-auto"
                 >

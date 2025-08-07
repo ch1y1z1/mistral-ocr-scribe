@@ -44,7 +44,13 @@ export const useLazySortable = (props: { id: string }) => {
         transition,
         opacity: isDragging ? 0.5 : 1,
       };
-      setSortableProps({ attributes, listeners, setNodeRef, style, isDragging });
+      setSortableProps({ 
+        attributes: attributes as unknown as Record<string, unknown>, 
+        listeners: listeners as unknown as Record<string, unknown>, 
+        setNodeRef, 
+        style, 
+        isDragging 
+      });
     });
   }, [props.id]);
 
